@@ -8,13 +8,13 @@
     <style>
         /* --- GLOBAL DESIGN --- */
         :root {
-            --bg: #0a0a0a;
-            --panel: rgba(255, 255, 255, 0.05);
-            --border: rgba(255, 255, 255, 0.1);
-            --text: #e0e0e0;
-            --accent: #00ff88; /* Othello Green */
-            --neon-red: #ff0055;
-            --neon-yellow: #00eaff;
+            --bg: #121212; /* 真っ黒ではなく深いグレーに */
+            --panel: rgba(255, 255, 255, 0.08);
+            --border: rgba(255, 255, 255, 0.2);
+            --text: #ffffff;
+            --accent: #00ff9d; 
+            --neon-red: #ff2a6d;
+            --neon-yellow: #f5d300; /* 視認性の高い黄色に変更 */
         }
         
         body {
@@ -27,101 +27,142 @@
             overflow: hidden;
         }
 
-        /* 背景エフェクト */
-        .noise {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            opacity: 0.03; pointer-events: none; z-index: -1;
-            background: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMDAiIGhlaWdodD0iMjAwIj48ZmlsdGVyIGlkPSJnoiPjxmZVR1cmJ1bGVuY2UgdHlwZT0iZnJhY3RhbE5vaXNlIiBiYXNlRnJlcXVlbmN5PSIwLjgiLz48L2ZpbHRlcj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWx0ZXI9InVybCgjZykiIG9wYWNpdHk9IjAuNSIvPjwvc3ZnPg==');
+        /* 背景：うっすらグリッドを入れて空間を認識しやすく */
+        .bg-grid {
+            position: fixed; width: 200%; height: 200%;
+            background-image: 
+                linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px);
+            background-size: 50px 50px;
+            transform: perspective(500px) rotateX(60deg);
+            z-index: -1; top: -50%;
         }
 
-        h1 { font-size: 2rem; letter-spacing: 0.2em; text-shadow: 0 0 10px rgba(255,255,255,0.2); margin-bottom: 20px; }
+        h1 { font-size: 2rem; letter-spacing: 0.2em; text-shadow: 0 0 15px rgba(255,255,255,0.3); margin-bottom: 20px; }
 
         /* 入力フォーム */
         #login-screen {
             background: var(--panel); padding: 40px;
-            border: 1px solid var(--border); border-radius: 8px;
+            border: 1px solid var(--border); border-radius: 12px;
             text-align: center; backdrop-filter: blur(10px);
             box-shadow: 0 20px 50px rgba(0,0,0,0.5);
             display: flex; flex-direction: column; gap: 15px;
         }
         input, select {
             padding: 12px; width: 250px;
-            background: rgba(0,0,0,0.3); border: 1px solid var(--border);
+            background: rgba(0,0,0,0.5); border: 1px solid #555;
             color: #fff; font-family: inherit; text-align: center; font-size: 1rem;
+            border-radius: 4px;
         }
-        select { cursor: pointer; color: var(--accent); }
+        select { cursor: pointer; color: var(--accent); font-weight: bold; }
         button {
-            background: transparent; border: 1px solid var(--text);
-            color: var(--text); padding: 10px; cursor: pointer;
-            font-size: 1rem; transition: 0.3s; margin-top: 10px;
+            background: rgba(255,255,255,0.1); border: 1px solid var(--accent);
+            color: var(--accent); padding: 12px; cursor: pointer;
+            font-size: 1rem; transition: 0.3s; margin-top: 10px; font-weight: bold;
+            border-radius: 4px;
         }
-        button:hover { background: var(--text); color: var(--bg); }
+        button:hover { background: var(--accent); color: #000; box-shadow: 0 0 20px var(--accent); }
 
         /* ゲーム画面共通 */
         #game-screen { display: none; flex-direction: column; align-items: center; }
-        .info-panel { display: flex; gap: 40px; margin-bottom: 20px; font-size: 1.2rem; }
-        .player-info { padding: 5px 15px; opacity: 0.5; border-bottom: 2px solid transparent; transition: 0.3s;}
-        .active-turn { opacity: 1; border-color: currentColor; text-shadow: 0 0 10px currentColor; }
+        .info-panel { display: flex; gap: 40px; margin-bottom: 25px; font-size: 1.3rem; font-weight: bold; }
+        .player-info { padding: 5px 20px; opacity: 0.4; border-bottom: 3px solid transparent; transition: 0.3s;}
+        .active-turn { opacity: 1; border-color: currentColor; text-shadow: 0 0 15px currentColor; transform: scale(1.1); }
 
-        /* --- OTHELLO STYLES --- */
+        /* --- OTHELLO STYLES (視認性強化) --- */
         .othello-board {
             display: grid; grid-template-columns: repeat(8, 45px); gap: 2px;
-            background: #222; border: 2px solid #444; padding: 2px;
+            background: #444; /* 枠線を少し明るく */
+            border: 4px solid #555; padding: 4px;
+            border-radius: 4px;
+            box-shadow: 0 0 30px rgba(0,0,0,0.5);
         }
         .o-cell {
-            width: 45px; height: 45px; background: #1a1a1a;
+            width: 45px; height: 45px; 
+            background: #2b5c2b; /* 緑要素を入れて「オセロ感」を出す（黒との対比のため） */
+            background-image: linear-gradient(135deg, #356b35, #1e421e);
             display: flex; align-items: center; justify-content: center;
             cursor: pointer;
         }
-        .o-cell:hover { background: #252525; }
+        .o-cell:hover { filter: brightness(1.2); }
+        
         .o-stone {
-            width: 36px; height: 36px; border-radius: 50%;
+            width: 38px; height: 38px; border-radius: 50%;
             transition: transform 0.6s; transform-style: preserve-3d;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.4);
         }
-        .o-black { background: #111; border: 1px solid #333; }
-        .o-white { background: #eee; box-shadow: 0 0 10px rgba(255,255,255,0.5); }
+        
+        /* 黒石：真っ黒ではなく、光沢とグレーの縁取りをつける */
+        .o-black { 
+            background: radial-gradient(circle at 30% 30%, #555, #000);
+            border: 2px solid #777; /* 明るいグレーの縁取りで視認性UP */
+        }
+        /* 白石：少し温かみのある白 */
+        .o-white { 
+            background: radial-gradient(circle at 30% 30%, #fff, #ccc);
+            border: 1px solid #999;
+        }
+        
         .flipping { transform: rotateY(180deg); }
 
-        /* --- CONNECT 4 STYLES --- */
+        /* --- CONNECT 4 STYLES (視認性強化) --- */
         .c4-container {
-            padding: 10px; background: #1a1a1a; border-radius: 10px;
-            box-shadow: 0 0 30px rgba(0,0,0,0.5); position: relative;
+            padding: 15px; 
+            background: #222; /* ボードの本体色を明るめに */
+            border: 2px solid #444;
+            border-radius: 15px;
+            box-shadow: 0 0 50px rgba(0,0,0,0.7); position: relative;
             cursor: pointer;
         }
         .c4-board {
-            display: grid; grid-template-columns: repeat(7, 50px); gap: 8px;
+            display: grid; grid-template-columns: repeat(7, 54px); gap: 10px;
+            background: #1a1a1a; padding: 10px; border-radius: 10px;
         }
         .c4-cell {
-            width: 50px; height: 50px; background: #0a0a0a; border-radius: 50%;
-            box-shadow: inset 0 0 10px rgba(0,0,0,0.8); z-index: 2; position: relative;
+            width: 54px; height: 54px; 
+            background: #050505; /* 穴は暗くしてコントラストを出す */
+            border-radius: 50%;
+            box-shadow: inset 0 0 12px rgba(0,0,0,0.9); 
+            z-index: 2; position: relative;
+            border: 1px solid #333; /* 穴の輪郭 */
         }
+        
+        /* ピース：発光を強化 */
         .c4-piece {
-            width: 50px; height: 50px; border-radius: 50%;
-            position: absolute; top: 0; left: 0; z-index: 1; transform: scale(0.8);
+            width: 54px; height: 54px; border-radius: 50%;
+            position: absolute; top: 0; left: 0; z-index: 1; transform: scale(0.9);
         }
-        .c4-red { background: var(--neon-red); box-shadow: 0 0 15px var(--neon-red); }
-        .c4-yellow { background: var(--neon-yellow); box-shadow: 0 0 15px var(--neon-yellow); }
+        .c4-red { 
+            background: var(--neon-red); 
+            box-shadow: 0 0 20px var(--neon-red), inset 0 0 10px rgba(255,255,255,0.5); 
+        }
+        .c4-yellow { 
+            background: var(--neon-yellow); 
+            box-shadow: 0 0 20px var(--neon-yellow), inset 0 0 10px rgba(255,255,255,0.5); 
+        }
+        
         .falling { animation: dropBounce 0.6s cubic-bezier(0.25, 1, 0.5, 1) forwards; }
         @keyframes dropBounce {
-            0% { transform: translateY(-300px) scale(0.8); opacity: 0; }
-            60% { transform: translateY(0) scale(0.8); opacity: 1; }
-            75% { transform: translateY(-20px) scale(0.8); }
-            100% { transform: translateY(0) scale(0.8); }
+            0% { transform: translateY(-300px) scale(0.9); opacity: 0; }
+            60% { transform: translateY(0) scale(0.9); opacity: 1; }
+            75% { transform: translateY(-20px) scale(0.9); }
+            100% { transform: translateY(0) scale(0.9); }
         }
         /* ホバーガイド */
         .c4-guide {
-            position: absolute; top: -60px; width: 50px; height: 50px;
-            border-radius: 50%; border: 2px dashed #555;
+            position: absolute; top: -65px; width: 54px; height: 54px;
+            border-radius: 50%; border: 3px solid #fff;
             transition: left 0.1s; opacity: 0; pointer-events: none;
+            box-shadow: 0 0 15px rgba(255,255,255,0.5);
         }
 
-        #message { margin-top: 20px; height: 1.5em; font-weight: bold; letter-spacing: 0.1em; }
-        #action-btn { display: none; margin-top: 10px; border-color: #ff4444; color: #ff4444; }
+        #message { margin-top: 25px; height: 1.5em; font-weight: bold; letter-spacing: 0.1em; font-size: 1.2rem; }
+        #action-btn { display: none; margin-top: 15px; border-color: #ff4444; color: #ff4444; }
     </style>
 </head>
 <body>
 
-    <div class="noise"></div>
+    <div class="bg-grid"></div>
     <h1>NITA GAME HUB</h1>
 
     <!-- ログイン & ゲーム選択 -->
@@ -181,7 +222,7 @@
         
         socket.on('joined', (data) => {
             myColor = data.color;
-            currentGameType = data.gameType; // 部屋に入った時点で確定したゲームタイプ
+            currentGameType = data.gameType;
             console.log(`Joined as ${myColor} in ${currentGameType}`);
         });
 
@@ -233,19 +274,23 @@
             document.getElementById('p1-info').classList.toggle('active-turn', isP1Turn);
             document.getElementById('p2-info').classList.toggle('active-turn', !isP1Turn);
             
+            // 色の設定（視認性向上）
             if(isP1Turn) {
-                document.getElementById('p1-info').style.color = currentGameType==='othello'?'#fff':'var(--neon-red)';
-                document.getElementById('p2-info').style.color = '#888';
+                // P1の色
+                const color = currentGameType==='othello' ? '#fff' : 'var(--neon-red)';
+                document.getElementById('p1-info').style.color = color;
+                document.getElementById('p2-info').style.color = '#555';
             } else {
-                document.getElementById('p1-info').style.color = '#888';
-                document.getElementById('p2-info').style.color = currentGameType==='othello'?'#fff':'var(--neon-yellow)';
+                // P2の色
+                const color = currentGameType==='othello' ? '#fff' : 'var(--neon-yellow)';
+                document.getElementById('p1-info').style.color = '#555';
+                document.getElementById('p2-info').style.color = color;
             }
 
             myTurn = (turn === myColor);
             msgEl.innerText = myTurn ? "YOUR TURN" : "WAITING...";
             msgEl.style.color = "#e0e0e0";
 
-            // オセロのパスボタン制御
             if(currentGameType === 'othello' && myTurn) {
                 if(!canOthelloMove(myColor)) {
                     actionBtn.style.display = 'block';
@@ -262,7 +307,7 @@
         }
 
         function renderBoardWait() {
-            boardArea.innerHTML = '<div style="width:300px; height:300px; border:1px dashed #555; display:flex; align-items:center; justify-content:center;">WAITING FOR PLAYER...</div>';
+            boardArea.innerHTML = '<div style="width:300px; height:150px; border:2px dashed #555; display:flex; align-items:center; justify-content:center; border-radius:10px; color:#888;">WAITING FOR PLAYER...</div>';
         }
 
         // ==========================================
@@ -303,7 +348,7 @@
             if(!myTurn) return;
             if(othelloBoard[y][x] !== null) return;
             const flipped = getOthelloFlips(x, y, myColor);
-            if(flipped.length === 0) return; // 置けない
+            if(flipped.length === 0) return; 
 
             socket.emit('othelloMove', { room: roomID, x, y, color: myColor });
         }
@@ -312,9 +357,11 @@
             othelloBoard[y][x] = color;
             const cell = document.querySelector(`.o-cell[data-x='${x}'][data-y='${y}']`);
             
+            // 既存の石があれば削除（バグ防止）
+            if(cell.firstChild) cell.removeChild(cell.firstChild);
+
             const stone = document.createElement('div');
             stone.className = `o-stone o-${color}`;
-            // 登場アニメーション
             stone.style.transform = 'scale(0)';
             cell.appendChild(stone);
             setTimeout(() => stone.style.transform = 'scale(1)', 10);
@@ -325,17 +372,18 @@
                     othelloBoard[pos.y][pos.x] = color;
                     const targetCell = document.querySelector(`.o-cell[data-x='${pos.x}'][data-y='${pos.y}']`);
                     const targetStone = targetCell.firstChild;
-                    targetStone.classList.add('flipping');
-                    setTimeout(() => {
-                        targetStone.className = `o-stone o-${color}`;
-                        targetStone.classList.remove('flipping');
-                    }, 300);
+                    if(targetStone) {
+                        targetStone.classList.add('flipping');
+                        setTimeout(() => {
+                            targetStone.className = `o-stone o-${color}`;
+                            targetStone.classList.remove('flipping');
+                        }, 300);
+                    }
                 });
             }
         }
 
         function getOthelloFlips(x, y, color) {
-            // ※簡易実装：裏返る石を計算（以前のロジックと同じ）
             const directions = [[-1,-1],[0,-1],[1,-1],[-1,0],[1,0],[-1,1],[0,1],[1,1]];
             let flipped = [];
             const opponent = color === 'black' ? 'white' : 'black';
@@ -369,7 +417,6 @@
             const container = document.createElement('div');
             container.className = 'c4-container';
             
-            // ガイド
             const guide = document.createElement('div');
             guide.className = 'c4-guide';
             guide.id = 'c4-guide';
@@ -388,17 +435,24 @@
             container.appendChild(board);
             boardArea.appendChild(container);
 
-            // イベント
+            // C4のマスサイズ+gap計算 (54px + 10px) = 64px
+            const COL_WIDTH = 64;
+            const PADDING = 25; // container padding (15) + board padding (10)
+
             container.addEventListener('mousemove', (e) => {
                 if(!myTurn) { guide.style.opacity=0; return; }
                 const rect = container.getBoundingClientRect();
                 const x = e.clientX - rect.left;
-                let col = Math.floor((x - 10) / 58);
+                
+                let col = Math.floor((x - PADDING) / COL_WIDTH);
                 if(col<0) col=0; if(col>6) col=6;
                 
-                guide.style.opacity = 0.8;
-                guide.style.borderColor = myColor==='red'?'var(--neon-red)':'var(--neon-yellow)';
-                guide.style.left = (10 + col * 58) + 'px';
+                guide.style.opacity = 1;
+                guide.style.borderColor = myColor==='red' ? 'var(--neon-red)' : 'var(--neon-yellow)';
+                guide.style.boxShadow = myColor==='red' ? '0 0 15px var(--neon-red)' : '0 0 15px var(--neon-yellow)';
+                
+                // ガイドの左位置計算
+                guide.style.left = (PADDING + col * COL_WIDTH) + 'px';
                 container.dataset.col = col;
             });
             
@@ -409,7 +463,7 @@
                 const col = container.dataset.col;
                 if(col !== undefined) {
                     socket.emit('connect4Move', { room: roomID, col: parseInt(col) });
-                    myTurn = false; // 連打防止
+                    myTurn = false;
                     guide.style.opacity = 0;
                 }
             });
@@ -421,8 +475,11 @@
             const cClass = color === 'red' ? 'c4-red' : 'c4-yellow';
             piece.className = `c4-piece ${cClass} falling`;
             
-            piece.style.top = (10 + row * 58) + 'px';
-            piece.style.left = (10 + col * 58) + 'px';
+            const COL_WIDTH = 64;
+            const PADDING = 25;
+
+            piece.style.top = (PADDING + row * 64) + 'px'; // 縦も同じ計算で
+            piece.style.left = (PADDING + col * COL_WIDTH) + 'px';
             
             container.appendChild(piece);
         });
