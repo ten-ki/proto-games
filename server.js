@@ -9,54 +9,44 @@ const io = new Server(server);
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-// 部屋ごとのデータを管理
 let rooms = {};
 
-// --- ゲーム設定 ---
 const OTHELLO_SIZE = 8;
 const C4_ROWS = 6;
 const C4_COLS = 7;
 
 io.on('connection', (socket) => {
-    console.log('User connected:', socket.id);
+    console.log('Connected:', socket.id);
 
-    // 入室処理
+    // 入室
     socket.on('joinRoom', ({ username, room, gameType }) => {
-        // 部屋がなければ作成
         if (!rooms[room]) {
             rooms[room] = {
-                gameType: gameType, // 'othello' or 'connect4'
+                gameType: gameType,
                 players: [],
-                board: null, // ゲーム開始時に初期化
+                board: null,
                 turn: null,
                 gameActive: false
             };
         }
-        
         const r = rooms[room];
 
-        // 満員チェック
         if (r.players.length >= 2) {
-            socket.emit('error', 'この部屋は満員です。');
+            socket.emit('error', '満員です');
             return;
         }
 
-        // 既存の部屋に参加する場合、ゲームタイプは部屋の設定に従う
-        const actualGameType = r.gameType;
-
-        // 色決め (Player 1 = 黒/赤, Player 2 = 白/黄)
+        const actualGameType = r.gameType; // 部屋作成者の設定に従う
         const isP1 = r.players.length === 0;
+        // P1: 黒/赤, P2: 白/黄
         const color = isP1 ? (actualGameType === 'othello' ? 'black' : 'red') 
                            : (actualGameType === 'othello' ? 'white' : 'yellow');
-        
-        const player = { id: socket.id, username, color };
-        r.players.push(player);
+
+        r.players.push({ id: socket.id, username, color });
         socket.join(room);
 
-        // 自分の情報を返す
         socket.emit('joined', { color, gameType: actualGameType });
 
-        // 2人揃ったらゲーム開始
         if (r.players.length === 2) {
             startGame(room);
         } else {
@@ -64,28 +54,53 @@ io.on('connection', (socket) => {
         }
     });
 
-    // --- オセロの操作 ---
+    // --- オセロ処理 ---
     socket.on('othelloMove', ({ room, x, y, color }) => {
         const r = rooms[room];
         if (!r || !r.gameActive || r.turn !== color) return;
 
-        // 石を置く＆ひっくり返す計算（簡易実装：サーバーは承認してクライアントにアニメーション命令）
-        io.to(room).emit('othelloUpdate', { x, y, color });
-        
-        // ターン交代
-        const nextTurn = color === 'black' ? 'white' : 'black';
-        r.turn = nextTurn;
-        io.to(room).emit('changeTurn', nextTurn);
+        // サーバー側で石を置く処理
+        const flipped = getOthelloFlips(r.board, x, y, color);
+        if (flipped.length === 0) return; // 不正な手
+
+        // 盤面更新
+        r.board[y][x] = color;
+        flipped.forEach(p => r.board[p.y][p.x] = color);
+
+        // 全員に更新通知
+        io.to(room).emit('othelloUpdate', { board: r.board, lastMove: {x,y}, color });
+
+        // --- 次のターン判定 ---
+        const opponent = color === 'black' ? 'white' : 'black';
+        const p1CanMove = canMove(r.board, opponent);
+        const p2CanMove = canMove(r.board, color);
+
+        if (p1CanMove) {
+            // 相手が打てるなら通常交代
+            r.turn = opponent;
+            io.to(room).emit('changeTurn', opponent);
+        } else if (p2CanMove) {
+            // 相手は打てないが、自分は打てる（パス）
+            io.to(room).emit('passMessage', `${opponent.toUpperCase()} PASS!`);
+            // ターンは変わらず自分のまま
+            io.to(room).emit('changeTurn', color);
+        } else {
+            // 双方打てない（ゲーム終了）
+            const score = calcScore(r.board);
+            let winner = 'draw';
+            if (score.black > score.white) winner = 'black';
+            if (score.white > score.black) winner = 'white';
+            
+            io.to(room).emit('gameOver', { 
+                winner, 
+                score,
+                msg: `FINISH! Black:${score.black} - White:${score.white}`
+            });
+            r.gameActive = false;
+        }
     });
 
-    socket.on('othelloPass', ({ room, color }) => {
-        const r = rooms[room];
-        const nextTurn = color === 'black' ? 'white' : 'black';
-        r.turn = nextTurn;
-        io.to(room).emit('changeTurn', nextTurn);
-    });
-
-    // --- 四目並べの操作 ---
+    // --- Connect4処理 ---
     socket.on('connect4Move', ({ room, col }) => {
         const r = rooms[room];
         if (!r || !r.gameActive) return;
@@ -93,7 +108,6 @@ io.on('connection', (socket) => {
         const player = r.players.find(p => p.id === socket.id);
         if (!player || player.color !== r.turn) return;
 
-        // 重力処理：一番下の空きを探す
         let targetRow = -1;
         for (let row = C4_ROWS - 1; row >= 0; row--) {
             if (r.board[row][col] === null) {
@@ -101,54 +115,99 @@ io.on('connection', (socket) => {
                 break;
             }
         }
+        if (targetRow === -1) return;
 
-        if (targetRow === -1) return; // 列がいっぱい
-
-        // 盤面更新
         r.board[targetRow][col] = player.color;
         io.to(room).emit('connect4Update', { row: targetRow, col, color: player.color });
 
-        // 勝利判定
         if (checkConnect4Win(r.board, player.color)) {
-            io.to(room).emit('gameOver', { winner: player.color });
+            io.to(room).emit('gameOver', { winner: player.color, msg: `${player.color.toUpperCase()} WINS!` });
             r.gameActive = false;
         } else if (r.board[0].every(c => c !== null)) {
-            io.to(room).emit('gameOver', { winner: 'draw' });
+            io.to(room).emit('gameOver', { winner: 'draw', msg: 'DRAW GAME' });
             r.gameActive = false;
         } else {
-            // ターン交代
             r.turn = r.turn === 'red' ? 'yellow' : 'red';
             io.to(room).emit('changeTurn', r.turn);
         }
     });
 
-    socket.on('disconnect', () => {
-        // 切断処理（簡易）
-    });
+    socket.on('disconnect', () => {});
 });
 
-// ゲーム開始処理
+// --- 初期化 ---
 function startGame(room) {
     const r = rooms[room];
     r.gameActive = true;
-    
+
     if (r.gameType === 'othello') {
         r.turn = 'black';
-        // オセロはクライアント側で初期配置を行うため、サーバー側ボード変数は省略（本格実装ならここも管理推奨）
+        // 8x8 初期化
+        r.board = Array(8).fill(null).map(() => Array(8).fill(null));
+        r.board[3][3] = 'white'; r.board[4][4] = 'white';
+        r.board[3][4] = 'black'; r.board[4][3] = 'black';
+        
+        io.to(room).emit('gameStart', {
+            p1: r.players[0].username,
+            p2: r.players[1].username,
+            gameType: 'othello',
+            turn: 'black',
+            board: r.board // 初期盤面を送る
+        });
     } else {
         r.turn = 'red';
         r.board = Array(C4_ROWS).fill(null).map(() => Array(C4_COLS).fill(null));
+        
+        io.to(room).emit('gameStart', {
+            p1: r.players[0].username,
+            p2: r.players[1].username,
+            gameType: 'connect4',
+            turn: 'red'
+        });
     }
-
-    io.to(room).emit('gameStart', {
-        p1: r.players[0].username,
-        p2: r.players[1].username,
-        gameType: r.gameType,
-        turn: r.turn
-    });
 }
 
-// 四目並べの勝利判定
+// --- オセロロジック ---
+function getOthelloFlips(board, x, y, color) {
+    if (board[y][x] !== null) return [];
+    const directions = [[-1,-1],[0,-1],[1,-1],[-1,0],[1,0],[-1,1],[0,1],[1,1]];
+    let flipped = [];
+    const opponent = color === 'black' ? 'white' : 'black';
+
+    directions.forEach(dir => {
+        let temp = [];
+        let cx = x + dir[0], cy = y + dir[1];
+        while(cx>=0 && cx<8 && cy>=0 && cy<8) {
+            if(board[cy][cx] === opponent) temp.push({x:cx, y:cy});
+            else if(board[cy][cx] === color) { flipped = flipped.concat(temp); break; }
+            else { temp = []; break; } // 空白なら無効
+            cx+=dir[0]; cy+=dir[1];
+        }
+        if(cx<0 || cx>=8 || cy<0 || cy>=8) temp = []; // 端まで行ったら無効
+        flipped = flipped.concat(temp);
+    });
+    return flipped;
+}
+
+function canMove(board, color) {
+    for(let y=0; y<8; y++) {
+        for(let x=0; x<8; x++) {
+            if(getOthelloFlips(board, x, y, color).length > 0) return true;
+        }
+    }
+    return false;
+}
+
+function calcScore(board) {
+    let black = 0, white = 0;
+    board.forEach(row => row.forEach(c => {
+        if(c==='black') black++;
+        else if(c==='white') white++;
+    }));
+    return { black, white };
+}
+
+// --- Connect4 ロジック ---
 function checkConnect4Win(board, color) {
     const directions = [[0, 1], [1, 0], [1, 1], [1, -1]];
     for (let r = 0; r < C4_ROWS; r++) {

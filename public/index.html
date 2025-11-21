@@ -8,186 +8,148 @@
     <style>
         /* --- GLOBAL DESIGN --- */
         :root {
-            --bg: #121212; /* 真っ黒ではなく深いグレーに */
-            --panel: rgba(255, 255, 255, 0.08);
-            --border: rgba(255, 255, 255, 0.2);
-            --text: #ffffff;
-            --accent: #00ff9d; 
-            --neon-red: #ff2a6d;
-            --neon-yellow: #f5d300; /* 視認性の高い黄色に変更 */
+            --bg: #111;
+            --text: #fff;
+            --accent: #00ff9d;
+            
+            /* Connect 4 Colors (High Contrast) */
+            --c4-frame: #e0e0e0; /* 明るいフレーム */
+            --c4-hole: #000000;  /* 真っ黒な穴 */
+            --c4-red: #d32f2f;   /* 濃い赤 */
+            --c4-yellow: #fbc02d;/* 濃い黄色 */
         }
         
         body {
             background-color: var(--bg);
             color: var(--text);
-            font-family: 'Courier New', monospace;
+            font-family: 'Verdana', sans-serif;
             margin: 0; height: 100vh;
             display: flex; flex-direction: column;
             align-items: center; justify-content: center;
             overflow: hidden;
         }
 
-        /* 背景：うっすらグリッドを入れて空間を認識しやすく */
-        .bg-grid {
-            position: fixed; width: 200%; height: 200%;
-            background-image: 
-                linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px);
-            background-size: 50px 50px;
-            transform: perspective(500px) rotateX(60deg);
-            z-index: -1; top: -50%;
-        }
+        h1 { font-weight: bold; letter-spacing: 0.1em; margin-bottom: 20px; }
 
-        h1 { font-size: 2rem; letter-spacing: 0.2em; text-shadow: 0 0 15px rgba(255,255,255,0.3); margin-bottom: 20px; }
-
-        /* 入力フォーム */
+        /* --- Login Screen --- */
         #login-screen {
-            background: var(--panel); padding: 40px;
-            border: 1px solid var(--border); border-radius: 12px;
-            text-align: center; backdrop-filter: blur(10px);
-            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+            background: #222; padding: 40px; border-radius: 8px;
+            text-align: center; border: 1px solid #444;
             display: flex; flex-direction: column; gap: 15px;
         }
         input, select {
-            padding: 12px; width: 250px;
-            background: rgba(0,0,0,0.5); border: 1px solid #555;
-            color: #fff; font-family: inherit; text-align: center; font-size: 1rem;
-            border-radius: 4px;
+            padding: 12px; width: 250px; text-align: center; font-size: 1rem;
+            background: #333; border: 1px solid #555; color: #fff; border-radius: 4px;
         }
-        select { cursor: pointer; color: var(--accent); font-weight: bold; }
         button {
-            background: rgba(255,255,255,0.1); border: 1px solid var(--accent);
-            color: var(--accent); padding: 12px; cursor: pointer;
-            font-size: 1rem; transition: 0.3s; margin-top: 10px; font-weight: bold;
-            border-radius: 4px;
+            background: var(--accent); border: none; color: #000;
+            padding: 12px; cursor: pointer; font-weight: bold; font-size: 1rem;
+            border-radius: 4px; transition: 0.2s;
         }
-        button:hover { background: var(--accent); color: #000; box-shadow: 0 0 20px var(--accent); }
+        button:hover { filter: brightness(1.2); }
 
-        /* ゲーム画面共通 */
+        /* --- Game Screen --- */
         #game-screen { display: none; flex-direction: column; align-items: center; }
-        .info-panel { display: flex; gap: 40px; margin-bottom: 25px; font-size: 1.3rem; font-weight: bold; }
-        .player-info { padding: 5px 20px; opacity: 0.4; border-bottom: 3px solid transparent; transition: 0.3s;}
-        .active-turn { opacity: 1; border-color: currentColor; text-shadow: 0 0 15px currentColor; transform: scale(1.1); }
+        
+        .info-panel { 
+            display: flex; gap: 30px; margin-bottom: 20px; 
+            background: #222; padding: 10px 30px; border-radius: 50px;
+        }
+        .player-info { opacity: 0.5; font-weight: bold; transition: 0.3s; }
+        .active-turn { opacity: 1; transform: scale(1.1); color: var(--accent); }
 
-        /* --- OTHELLO STYLES (視認性強化) --- */
+        /* --- OTHELLO (Classic Green) --- */
         .othello-board {
             display: grid; grid-template-columns: repeat(8, 45px); gap: 2px;
-            background: #444; /* 枠線を少し明るく */
-            border: 4px solid #555; padding: 4px;
-            border-radius: 4px;
-            box-shadow: 0 0 30px rgba(0,0,0,0.5);
+            background: #000; padding: 4px; border: 4px solid #444; border-radius: 4px;
         }
         .o-cell {
-            width: 45px; height: 45px; 
-            background: #2b5c2b; /* 緑要素を入れて「オセロ感」を出す（黒との対比のため） */
-            background-image: linear-gradient(135deg, #356b35, #1e421e);
-            display: flex; align-items: center; justify-content: center;
-            cursor: pointer;
+            width: 45px; height: 45px; background: #006400; /* 深い緑 */
+            display: flex; align-items: center; justify-content: center; cursor: pointer;
         }
-        .o-cell:hover { filter: brightness(1.2); }
+        .o-cell:hover { background: #007500; }
         
         .o-stone {
             width: 38px; height: 38px; border-radius: 50%;
-            transition: transform 0.6s; transform-style: preserve-3d;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.4);
+            transition: transform 0.4s;
         }
-        
-        /* 黒石：真っ黒ではなく、光沢とグレーの縁取りをつける */
-        .o-black { 
-            background: radial-gradient(circle at 30% 30%, #555, #000);
-            border: 2px solid #777; /* 明るいグレーの縁取りで視認性UP */
-        }
-        /* 白石：少し温かみのある白 */
-        .o-white { 
-            background: radial-gradient(circle at 30% 30%, #fff, #ccc);
-            border: 1px solid #999;
-        }
-        
-        .flipping { transform: rotateY(180deg); }
+        .o-black { background: #000; border: 1px solid #555; box-shadow: 2px 2px 2px rgba(0,0,0,0.5); }
+        .o-white { background: #fff; border: 1px solid #ccc; box-shadow: 2px 2px 2px rgba(0,0,0,0.5); }
 
-        /* --- CONNECT 4 STYLES (視認性強化) --- */
+        /* --- CONNECT 4 (High Visibility) --- */
         .c4-container {
-            padding: 15px; 
-            background: #222; /* ボードの本体色を明るめに */
-            border: 2px solid #444;
-            border-radius: 15px;
-            box-shadow: 0 0 50px rgba(0,0,0,0.7); position: relative;
-            cursor: pointer;
+            padding: 15px;
+            background: var(--c4-frame); /* 白っぽいフレームで視認性確保 */
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+            position: relative; cursor: pointer;
+            border: 2px solid #999;
         }
         .c4-board {
-            display: grid; grid-template-columns: repeat(7, 54px); gap: 10px;
-            background: #1a1a1a; padding: 10px; border-radius: 10px;
+            display: grid; grid-template-columns: repeat(7, 56px); gap: 10px;
+            padding: 10px; background: #bbb; /* 内側のフレーム色 */
+            border-radius: 5px;
         }
         .c4-cell {
-            width: 54px; height: 54px; 
-            background: #050505; /* 穴は暗くしてコントラストを出す */
+            width: 56px; height: 56px;
+            background: var(--c4-hole); /* 穴は完全な黒 */
             border-radius: 50%;
-            box-shadow: inset 0 0 12px rgba(0,0,0,0.9); 
-            z-index: 2; position: relative;
-            border: 1px solid #333; /* 穴の輪郭 */
+            box-shadow: inset 2px 2px 5px rgba(255,255,255,0.1); /* 穴の立体感 */
+            position: relative; z-index: 2;
         }
-        
-        /* ピース：発光を強化 */
         .c4-piece {
-            width: 54px; height: 54px; border-radius: 50%;
-            position: absolute; top: 0; left: 0; z-index: 1; transform: scale(0.9);
+            width: 56px; height: 56px; border-radius: 50%;
+            position: absolute; top: 0; left: 0; z-index: 1;
+            /* 少しだけ小さくして枠を見せる */
+            transform: scale(0.92);
         }
-        .c4-red { 
-            background: var(--neon-red); 
-            box-shadow: 0 0 20px var(--neon-red), inset 0 0 10px rgba(255,255,255,0.5); 
-        }
-        .c4-yellow { 
-            background: var(--neon-yellow); 
-            box-shadow: 0 0 20px var(--neon-yellow), inset 0 0 10px rgba(255,255,255,0.5); 
-        }
-        
-        .falling { animation: dropBounce 0.6s cubic-bezier(0.25, 1, 0.5, 1) forwards; }
+        /* くっきりした色使い */
+        .c4-red { background: var(--c4-red); box-shadow: inset -2px -2px 5px rgba(0,0,0,0.3); }
+        .c4-yellow { background: var(--c4-yellow); box-shadow: inset -2px -2px 5px rgba(0,0,0,0.3); }
+
+        /* 落下アニメーション */
+        .falling { animation: dropBounce 0.5s ease-in forwards; }
         @keyframes dropBounce {
-            0% { transform: translateY(-300px) scale(0.9); opacity: 0; }
-            60% { transform: translateY(0) scale(0.9); opacity: 1; }
-            75% { transform: translateY(-20px) scale(0.9); }
-            100% { transform: translateY(0) scale(0.9); }
-        }
-        /* ホバーガイド */
-        .c4-guide {
-            position: absolute; top: -65px; width: 54px; height: 54px;
-            border-radius: 50%; border: 3px solid #fff;
-            transition: left 0.1s; opacity: 0; pointer-events: none;
-            box-shadow: 0 0 15px rgba(255,255,255,0.5);
+            0% { transform: translateY(-300px) scale(0.92); }
+            70% { transform: translateY(0) scale(0.92); }
+            85% { transform: translateY(-10px) scale(0.92); }
+            100% { transform: translateY(0) scale(0.92); }
         }
 
-        #message { margin-top: 25px; height: 1.5em; font-weight: bold; letter-spacing: 0.1em; font-size: 1.2rem; }
-        #action-btn { display: none; margin-top: 15px; border-color: #ff4444; color: #ff4444; }
+        .c4-guide {
+            position: absolute; top: -60px; width: 56px; height: 56px;
+            border-radius: 50%; border: 4px solid #fff;
+            transition: left 0.1s; opacity: 0; pointer-events: none;
+            box-shadow: 0 0 10px rgba(255,255,255,0.5);
+        }
+
+        #message { margin-top: 25px; font-size: 1.5rem; font-weight: bold; text-align: center; min-height: 1.5em; }
+        #restart-btn { display: none; margin-top: 15px; background: #fff; color: #000; }
     </style>
 </head>
 <body>
 
-    <div class="bg-grid"></div>
-    <h1>NITA GAME HUB</h1>
+    <h1>GAME HUB</h1>
 
-    <!-- ログイン & ゲーム選択 -->
     <div id="login-screen">
-        <input type="text" id="username" placeholder="DISPLAY NAME" maxlength="10">
+        <input type="text" id="username" placeholder="NAME" maxlength="10">
         <input type="text" id="room" placeholder="ROOM CODE">
         <select id="gameType">
-            <option value="othello">OTHELLO (Tactics)</option>
-            <option value="connect4">GRAVITY (Action)</option>
+            <option value="othello">OTHELLO</option>
+            <option value="connect4">GRAVITY 4</option>
         </select>
-        <button onclick="joinGame()">CONNECT</button>
+        <button onclick="joinGame()">Start Game</button>
     </div>
 
-    <!-- ゲーム画面 -->
     <div id="game-screen">
         <div class="info-panel">
-            <div id="p1-info" class="player-info">P1</div>
-            <div id="p2-info" class="player-info">P2</div>
+            <div id="p1-info" class="player-info">Player 1</div>
+            <div id="p2-info" class="player-info">Player 2</div>
         </div>
-        
-        <!-- ボード描画エリア -->
+
         <div id="board-area"></div>
-        
         <div id="message"></div>
-        <button id="action-btn" onclick="handleAction()">ACTION</button>
+        <button id="restart-btn" onclick="location.reload()">PLAY AGAIN</button>
     </div>
 
     <script>
@@ -196,222 +158,113 @@
         let myTurn = false;
         let currentGameType = '';
         let roomID = '';
-        
-        // オセロ用状態
-        let othelloBoard = []; 
-
-        // DOM Elements
-        const loginScreen = document.getElementById('login-screen');
-        const gameScreen = document.getElementById('game-screen');
         const boardArea = document.getElementById('board-area');
         const msgEl = document.getElementById('message');
-        const actionBtn = document.getElementById('action-btn');
 
         function joinGame() {
             const username = document.getElementById('username').value;
             roomID = document.getElementById('room').value;
             const gameType = document.getElementById('gameType').value;
-            if(!username || !roomID) return alert("名前と部屋コードを入力してください");
-            
+            if(!username || !roomID) return alert("Please enter Name and Room Code");
             socket.emit('joinRoom', { username, room: roomID, gameType });
         }
 
         // --- Socket Events ---
-
         socket.on('error', (msg) => alert(msg));
         
         socket.on('joined', (data) => {
             myColor = data.color;
             currentGameType = data.gameType;
-            console.log(`Joined as ${myColor} in ${currentGameType}`);
         });
 
         socket.on('waiting', (msg) => {
-            loginScreen.style.display = 'none';
-            gameScreen.style.display = 'flex';
+            document.getElementById('login-screen').style.display = 'none';
+            document.getElementById('game-screen').style.display = 'flex';
             msgEl.innerText = msg;
-            msgEl.style.color = '#888';
-            renderBoardWait();
+            boardArea.innerHTML = '<div style="padding:40px; color:#666;">Waiting for opponent...</div>';
         });
 
-        socket.on('gameStart', ({ p1, p2, gameType, turn }) => {
-            loginScreen.style.display = 'none';
-            gameScreen.style.display = 'flex';
+        socket.on('gameStart', ({ p1, p2, gameType, turn, board }) => {
+            document.getElementById('login-screen').style.display = 'none';
+            document.getElementById('game-screen').style.display = 'flex';
             
-            document.getElementById('p1-info').innerText = `● ${p1}`;
-            document.getElementById('p2-info').innerText = `○ ${p2}`;
+            document.getElementById('p1-info').innerText = p1;
+            document.getElementById('p2-info').innerText = p2;
             
             currentGameType = gameType;
-            if(currentGameType === 'othello') {
-                setupOthello();
+            if(gameType === 'othello') {
+                renderOthello(board);
             } else {
                 setupConnect4();
             }
-            
             updateTurn(turn);
-            msgEl.innerText = "GAME START";
+        });
+
+        socket.on('othelloUpdate', ({ board, lastMove, color }) => {
+            renderOthello(board);
+        });
+
+        socket.on('passMessage', (msgText) => {
+            alert(msgText); // パスが発生したことを通知
         });
 
         socket.on('changeTurn', (turn) => updateTurn(turn));
-        
-        socket.on('gameOver', ({ winner }) => {
+
+        socket.on('gameOver', ({ winner, msg }) => {
             myTurn = false;
-            if(winner === 'draw') {
-                msgEl.innerText = "DRAW GAME";
-            } else {
-                const winText = (winner === myColor) ? "YOU WIN !!" : "YOU LOSE...";
-                msgEl.innerText = winText;
-                msgEl.style.color = (winner === myColor) ? '#00ff88' : '#ff4444';
-            }
-            actionBtn.style.display = 'block';
-            actionBtn.innerText = 'RELOAD';
-            actionBtn.onclick = () => location.reload();
+            msgEl.innerText = msg;
+            msgEl.style.color = winner === myColor ? '#00ff9d' : '#ff4444';
+            if(winner === 'draw') msgEl.style.color = '#fff';
+            
+            document.getElementById('p1-info').classList.remove('active-turn');
+            document.getElementById('p2-info').classList.remove('active-turn');
+            document.getElementById('restart-btn').style.display = 'block';
         });
 
-        // --- 共通関数 ---
+        // --- Functions ---
+
         function updateTurn(turn) {
-            const isP1Turn = (turn === 'black' || turn === 'red');
-            document.getElementById('p1-info').classList.toggle('active-turn', isP1Turn);
-            document.getElementById('p2-info').classList.toggle('active-turn', !isP1Turn);
+            const isP1 = (turn === 'black' || turn === 'red');
+            document.getElementById('p1-info').classList.toggle('active-turn', isP1);
+            document.getElementById('p2-info').classList.toggle('active-turn', !isP1);
             
-            // 色の設定（視認性向上）
-            if(isP1Turn) {
-                // P1の色
-                const color = currentGameType==='othello' ? '#fff' : 'var(--neon-red)';
-                document.getElementById('p1-info').style.color = color;
-                document.getElementById('p2-info').style.color = '#555';
-            } else {
-                // P2の色
-                const color = currentGameType==='othello' ? '#fff' : 'var(--neon-yellow)';
-                document.getElementById('p1-info').style.color = '#555';
-                document.getElementById('p2-info').style.color = color;
-            }
-
             myTurn = (turn === myColor);
-            msgEl.innerText = myTurn ? "YOUR TURN" : "WAITING...";
-            msgEl.style.color = "#e0e0e0";
-
-            if(currentGameType === 'othello' && myTurn) {
-                if(!canOthelloMove(myColor)) {
-                    actionBtn.style.display = 'block';
-                    actionBtn.innerText = 'PASS';
-                    actionBtn.onclick = () => {
-                        socket.emit('othelloPass', { room: roomID, color: myColor });
-                        actionBtn.style.display = 'none';
-                    };
-                    msgEl.innerText = "NO MOVES - PASS?";
-                } else {
-                    actionBtn.style.display = 'none';
-                }
+            if(myTurn) {
+                msgEl.innerText = "YOUR TURN";
+                msgEl.style.color = "#00ff9d";
+            } else {
+                msgEl.innerText = "OPPONENT'S TURN";
+                msgEl.style.color = "#666";
             }
         }
 
-        function renderBoardWait() {
-            boardArea.innerHTML = '<div style="width:300px; height:150px; border:2px dashed #555; display:flex; align-items:center; justify-content:center; border-radius:10px; color:#888;">WAITING FOR PLAYER...</div>';
-        }
-
-        // ==========================================
-        //         OTHELLO LOGIC
-        // ==========================================
-        
-        function setupOthello() {
+        // --- Othello Render ---
+        function renderOthello(boardData) {
             boardArea.innerHTML = '';
             const board = document.createElement('div');
             board.className = 'othello-board';
-            
-            othelloBoard = Array(8).fill(null).map(() => Array(8).fill(null));
 
             for(let y=0; y<8; y++) {
                 for(let x=0; x<8; x++) {
                     const cell = document.createElement('div');
                     cell.className = 'o-cell';
-                    cell.dataset.x = x;
-                    cell.dataset.y = y;
-                    cell.onclick = () => clickOthello(x, y);
+                    cell.onclick = () => {
+                        if(myTurn) socket.emit('othelloMove', { room: roomID, x, y, color: myColor });
+                    };
+                    
+                    const val = boardData[y][x];
+                    if(val) {
+                        const stone = document.createElement('div');
+                        stone.className = `o-stone o-${val}`;
+                        cell.appendChild(stone);
+                    }
                     board.appendChild(cell);
                 }
             }
             boardArea.appendChild(board);
-            
-            // 初期配置
-            placeOthelloStone(3, 3, 'white', false);
-            placeOthelloStone(4, 4, 'white', false);
-            placeOthelloStone(3, 4, 'black', false);
-            placeOthelloStone(4, 3, 'black', false);
         }
 
-        socket.on('othelloUpdate', ({ x, y, color }) => {
-            placeOthelloStone(x, y, color, true);
-        });
-
-        function clickOthello(x, y) {
-            if(!myTurn) return;
-            if(othelloBoard[y][x] !== null) return;
-            const flipped = getOthelloFlips(x, y, myColor);
-            if(flipped.length === 0) return; 
-
-            socket.emit('othelloMove', { room: roomID, x, y, color: myColor });
-        }
-
-        function placeOthelloStone(x, y, color, doFlip) {
-            othelloBoard[y][x] = color;
-            const cell = document.querySelector(`.o-cell[data-x='${x}'][data-y='${y}']`);
-            
-            // 既存の石があれば削除（バグ防止）
-            if(cell.firstChild) cell.removeChild(cell.firstChild);
-
-            const stone = document.createElement('div');
-            stone.className = `o-stone o-${color}`;
-            stone.style.transform = 'scale(0)';
-            cell.appendChild(stone);
-            setTimeout(() => stone.style.transform = 'scale(1)', 10);
-
-            if(doFlip) {
-                const flipped = getOthelloFlips(x, y, color);
-                flipped.forEach(pos => {
-                    othelloBoard[pos.y][pos.x] = color;
-                    const targetCell = document.querySelector(`.o-cell[data-x='${pos.x}'][data-y='${pos.y}']`);
-                    const targetStone = targetCell.firstChild;
-                    if(targetStone) {
-                        targetStone.classList.add('flipping');
-                        setTimeout(() => {
-                            targetStone.className = `o-stone o-${color}`;
-                            targetStone.classList.remove('flipping');
-                        }, 300);
-                    }
-                });
-            }
-        }
-
-        function getOthelloFlips(x, y, color) {
-            const directions = [[-1,-1],[0,-1],[1,-1],[-1,0],[1,0],[-1,1],[0,1],[1,1]];
-            let flipped = [];
-            const opponent = color === 'black' ? 'white' : 'black';
-            
-            directions.forEach(dir => {
-                let temp = [];
-                let cx = x + dir[0], cy = y + dir[1];
-                while(cx>=0 && cx<8 && cy>=0 && cy<8) {
-                    if(othelloBoard[cy][cx] === opponent) temp.push({x:cx, y:cy});
-                    else if(othelloBoard[cy][cx] === color) { flipped = flipped.concat(temp); break; }
-                    else break;
-                    cx+=dir[0]; cy+=dir[1];
-                }
-            });
-            return flipped;
-        }
-
-        function canOthelloMove(color) {
-            for(let y=0; y<8; y++) 
-                for(let x=0; x<8; x++) 
-                    if(!othelloBoard[y][x] && getOthelloFlips(x, y, color).length > 0) return true;
-            return false;
-        }
-
-        // ==========================================
-        //         CONNECT 4 LOGIC
-        // ==========================================
-
+        // --- Connect 4 Setup & Logic ---
         function setupConnect4() {
             boardArea.innerHTML = '';
             const container = document.createElement('div');
@@ -419,12 +272,12 @@
             
             const guide = document.createElement('div');
             guide.className = 'c4-guide';
-            guide.id = 'c4-guide';
             container.appendChild(guide);
 
             const board = document.createElement('div');
             board.className = 'c4-board';
 
+            // 6行x7列の穴を作成
             for(let r=0; r<6; r++) {
                 for(let c=0; c<7; c++) {
                     const cell = document.createElement('div');
@@ -435,8 +288,7 @@
             container.appendChild(board);
             boardArea.appendChild(container);
 
-            // C4のマスサイズ+gap計算 (54px + 10px) = 64px
-            const COL_WIDTH = 64;
+            const COL_WIDTH = 66; // 56px cell + 10px gap
             const PADDING = 25; // container padding (15) + board padding (10)
 
             container.addEventListener('mousemove', (e) => {
@@ -445,17 +297,14 @@
                 const x = e.clientX - rect.left;
                 
                 let col = Math.floor((x - PADDING) / COL_WIDTH);
-                if(col<0) col=0; if(col>6) col=6;
+                if(col < 0) col = 0; if(col > 6) col = 6;
                 
                 guide.style.opacity = 1;
-                guide.style.borderColor = myColor==='red' ? 'var(--neon-red)' : 'var(--neon-yellow)';
-                guide.style.boxShadow = myColor==='red' ? '0 0 15px var(--neon-red)' : '0 0 15px var(--neon-yellow)';
-                
-                // ガイドの左位置計算
+                guide.style.borderColor = myColor === 'red' ? 'var(--c4-red)' : 'var(--c4-yellow)';
                 guide.style.left = (PADDING + col * COL_WIDTH) + 'px';
                 container.dataset.col = col;
             });
-            
+
             container.addEventListener('mouseleave', () => guide.style.opacity=0);
             
             container.addEventListener('click', () => {
@@ -472,18 +321,17 @@
         socket.on('connect4Update', ({ row, col, color }) => {
             const container = document.querySelector('.c4-container');
             const piece = document.createElement('div');
-            const cClass = color === 'red' ? 'c4-red' : 'c4-yellow';
-            piece.className = `c4-piece ${cClass} falling`;
+            piece.className = `c4-piece c4-${color} falling`;
             
-            const COL_WIDTH = 64;
-            const PADDING = 25;
+            // 位置計算 (Padding 25px + (Index * 66px))
+            const posBase = 25;
+            const sizeStep = 66;
 
-            piece.style.top = (PADDING + row * 64) + 'px'; // 縦も同じ計算で
-            piece.style.left = (PADDING + col * COL_WIDTH) + 'px';
+            piece.style.top = (posBase + row * sizeStep) + 'px';
+            piece.style.left = (posBase + col * sizeStep) + 'px';
             
             container.appendChild(piece);
         });
-
     </script>
 </body>
 </html>
