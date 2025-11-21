@@ -3,324 +3,430 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NITA OTHELLO | Deep Dive</title>
+    <title>NITA GAME HUB</title>
     <script src="/socket.io/socket.io.js"></script>
     <style>
-        /* --- DESIGN SYSTEM (Deep Dive) --- */
+        /* --- GLOBAL DESIGN --- */
         :root {
-            --bg: #080808;
-            --panel: rgba(255, 255, 255, 0.03);
+            --bg: #0a0a0a;
+            --panel: rgba(255, 255, 255, 0.05);
             --border: rgba(255, 255, 255, 0.1);
             --text: #e0e0e0;
-            --accent: #00ff88; /* Neon Lime */
-            --accent-glow: 0 0 15px rgba(0, 255, 136, 0.4);
-            --black-stone: #111;
-            --white-stone: #eee;
+            --accent: #00ff88; /* Othello Green */
+            --neon-red: #ff0055;
+            --neon-yellow: #00eaff;
         }
         
         body {
             background-color: var(--bg);
             color: var(--text);
             font-family: 'Courier New', monospace;
-            margin: 0;
-            height: 100vh;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
+            margin: 0; height: 100vh;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
             overflow: hidden;
         }
 
-        /* 背景ノイズ */
+        /* 背景エフェクト */
         .noise {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            opacity: 0.05; pointer-events: none; z-index: 0;
+            opacity: 0.03; pointer-events: none; z-index: -1;
             background: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMDAiIGhlaWdodD0iMjAwIj48ZmlsdGVyIGlkPSJnoiPjxmZVR1cmJ1bGVuY2UgdHlwZT0iZnJhY3RhbE5vaXNlIiBiYXNlRnJlcXVlbmN5PSIwLjgiLz48L2ZpbHRlcj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWx0ZXI9InVybCgjZykiIG9wYWNpdHk9IjAuNSIvPjwvc3ZnPg==');
         }
 
-        h1 {
-            font-size: 2.5rem; letter-spacing: 0.2em; margin-bottom: 10px;
-            text-shadow: var(--accent-glow); z-index: 1;
-        }
+        h1 { font-size: 2rem; letter-spacing: 0.2em; text-shadow: 0 0 10px rgba(255,255,255,0.2); margin-bottom: 20px; }
 
         /* 入力フォーム */
         #login-screen {
-            z-index: 10; background: var(--panel); padding: 40px;
-            border: 1px solid var(--border); backdrop-filter: blur(10px);
-            border-radius: 8px; text-align: center;
+            background: var(--panel); padding: 40px;
+            border: 1px solid var(--border); border-radius: 8px;
+            text-align: center; backdrop-filter: blur(10px);
             box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+            display: flex; flex-direction: column; gap: 15px;
         }
-        input {
-            display: block; margin: 15px auto; padding: 12px; width: 250px;
+        input, select {
+            padding: 12px; width: 250px;
             background: rgba(0,0,0,0.3); border: 1px solid var(--border);
             color: #fff; font-family: inherit; text-align: center; font-size: 1rem;
         }
-        input:focus { border-color: var(--accent); outline: none; }
+        select { cursor: pointer; color: var(--accent); }
         button {
-            background: transparent; border: 1px solid var(--accent);
-            color: var(--accent); padding: 10px 30px; cursor: pointer;
-            font-size: 1rem; transition: 0.3s; letter-spacing: 0.1em;
-            margin-top: 10px;
+            background: transparent; border: 1px solid var(--text);
+            color: var(--text); padding: 10px; cursor: pointer;
+            font-size: 1rem; transition: 0.3s; margin-top: 10px;
         }
-        button:hover { background: var(--accent); color: var(--bg); box-shadow: var(--accent-glow); }
+        button:hover { background: var(--text); color: var(--bg); }
 
-        /* ゲーム画面 */
-        #game-screen { display: none; flex-direction: column; align-items: center; z-index: 10; }
-        
-        .info-panel {
-            display: flex; gap: 40px; margin-bottom: 20px; font-size: 1.2rem;
-        }
-        .player-info {
-            padding: 5px 15px; border-bottom: 2px solid transparent; opacity: 0.5; transition: 0.3s;
-        }
-        .active-turn { opacity: 1; border-color: var(--accent); text-shadow: var(--accent-glow); }
+        /* ゲーム画面共通 */
+        #game-screen { display: none; flex-direction: column; align-items: center; }
+        .info-panel { display: flex; gap: 40px; margin-bottom: 20px; font-size: 1.2rem; }
+        .player-info { padding: 5px 15px; opacity: 0.5; border-bottom: 2px solid transparent; transition: 0.3s;}
+        .active-turn { opacity: 1; border-color: currentColor; text-shadow: 0 0 10px currentColor; }
 
-        /* オセロ盤 */
-        #board {
+        /* --- OTHELLO STYLES --- */
+        .othello-board {
             display: grid; grid-template-columns: repeat(8, 45px); gap: 2px;
             background: #222; border: 2px solid #444; padding: 2px;
-            box-shadow: 0 0 50px rgba(0,0,0,0.8);
         }
-        .cell {
+        .o-cell {
             width: 45px; height: 45px; background: #1a1a1a;
             display: flex; align-items: center; justify-content: center;
-            cursor: pointer; position: relative;
+            cursor: pointer;
         }
-        .cell:hover { background: #252525; }
-
-        /* 石のデザインとアニメーション */
-        .stone {
+        .o-cell:hover { background: #252525; }
+        .o-stone {
             width: 36px; height: 36px; border-radius: 50%;
-            transition: transform 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-            transform-style: preserve-3d;
-            box-shadow: inset 0 0 10px rgba(0,0,0,0.5);
+            transition: transform 0.6s; transform-style: preserve-3d;
         }
-        .stone.black { background: var(--black-stone); border: 1px solid #333; }
-        .stone.white { background: var(--white-stone); box-shadow: 0 0 10px rgba(255,255,255,0.5); }
-        
-        /* アニメーション用クラス */
-        .stone-enter { animation: popIn 0.4s forwards; }
-        @keyframes popIn { from { transform: scale(0); } to { transform: scale(1); } }
-        
-        /* 裏返しアニメーション（Y軸回転） */
+        .o-black { background: #111; border: 1px solid #333; }
+        .o-white { background: #eee; box-shadow: 0 0 10px rgba(255,255,255,0.5); }
         .flipping { transform: rotateY(180deg); }
 
-        #message { margin-top: 20px; height: 1.5em; color: var(--accent); }
-        #pass-btn { display: none; margin-top: 10px; border-color: #ff4444; color: #ff4444; }
+        /* --- CONNECT 4 STYLES --- */
+        .c4-container {
+            padding: 10px; background: #1a1a1a; border-radius: 10px;
+            box-shadow: 0 0 30px rgba(0,0,0,0.5); position: relative;
+            cursor: pointer;
+        }
+        .c4-board {
+            display: grid; grid-template-columns: repeat(7, 50px); gap: 8px;
+        }
+        .c4-cell {
+            width: 50px; height: 50px; background: #0a0a0a; border-radius: 50%;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.8); z-index: 2; position: relative;
+        }
+        .c4-piece {
+            width: 50px; height: 50px; border-radius: 50%;
+            position: absolute; top: 0; left: 0; z-index: 1; transform: scale(0.8);
+        }
+        .c4-red { background: var(--neon-red); box-shadow: 0 0 15px var(--neon-red); }
+        .c4-yellow { background: var(--neon-yellow); box-shadow: 0 0 15px var(--neon-yellow); }
+        .falling { animation: dropBounce 0.6s cubic-bezier(0.25, 1, 0.5, 1) forwards; }
+        @keyframes dropBounce {
+            0% { transform: translateY(-300px) scale(0.8); opacity: 0; }
+            60% { transform: translateY(0) scale(0.8); opacity: 1; }
+            75% { transform: translateY(-20px) scale(0.8); }
+            100% { transform: translateY(0) scale(0.8); }
+        }
+        /* ホバーガイド */
+        .c4-guide {
+            position: absolute; top: -60px; width: 50px; height: 50px;
+            border-radius: 50%; border: 2px dashed #555;
+            transition: left 0.1s; opacity: 0; pointer-events: none;
+        }
+
+        #message { margin-top: 20px; height: 1.5em; font-weight: bold; letter-spacing: 0.1em; }
+        #action-btn { display: none; margin-top: 10px; border-color: #ff4444; color: #ff4444; }
     </style>
 </head>
 <body>
 
     <div class="noise"></div>
+    <h1>NITA GAME HUB</h1>
 
-    <h1>NITA OTHELLO</h1>
-
-    <!-- ログイン画面 -->
+    <!-- ログイン & ゲーム選択 -->
     <div id="login-screen">
-        <p style="font-size:0.8rem; opacity:0.7;">ENTER THE GAME GRID</p>
         <input type="text" id="username" placeholder="DISPLAY NAME" maxlength="10">
-        <input type="text" id="room" placeholder="SECRET CODE (Room ID)">
+        <input type="text" id="room" placeholder="ROOM CODE">
+        <select id="gameType">
+            <option value="othello">OTHELLO (Tactics)</option>
+            <option value="connect4">GRAVITY (Action)</option>
+        </select>
         <button onclick="joinGame()">CONNECT</button>
     </div>
 
     <!-- ゲーム画面 -->
     <div id="game-screen">
         <div class="info-panel">
-            <div id="p1-info" class="player-info">Waiting...</div>
-            <div id="p2-info" class="player-info">Waiting...</div>
+            <div id="p1-info" class="player-info">P1</div>
+            <div id="p2-info" class="player-info">P2</div>
         </div>
         
-        <div id="board"></div>
+        <!-- ボード描画エリア -->
+        <div id="board-area"></div>
         
         <div id="message"></div>
-        <button id="pass-btn" onclick="passTurn()">PASS TURN</button>
+        <button id="action-btn" onclick="handleAction()">ACTION</button>
     </div>
 
     <script>
         const socket = io();
         let myColor = null;
         let myTurn = false;
-        let boardState = Array(8).fill(null).map(() => Array(8).fill(null));
+        let currentGameType = '';
+        let roomID = '';
+        
+        // オセロ用状態
+        let othelloBoard = []; 
 
-        // DOM要素
+        // DOM Elements
         const loginScreen = document.getElementById('login-screen');
         const gameScreen = document.getElementById('game-screen');
-        const boardEl = document.getElementById('board');
+        const boardArea = document.getElementById('board-area');
         const msgEl = document.getElementById('message');
-        const passBtn = document.getElementById('pass-btn');
+        const actionBtn = document.getElementById('action-btn');
 
-        // ゲーム参加
         function joinGame() {
             const username = document.getElementById('username').value;
-            const room = document.getElementById('room').value;
-            if(!username || !room) return alert('名前と合言葉を入力してください');
-            socket.emit('joinRoom', { username, room });
+            roomID = document.getElementById('room').value;
+            const gameType = document.getElementById('gameType').value;
+            if(!username || !roomID) return alert("名前と部屋コードを入力してください");
+            
+            socket.emit('joinRoom', { username, room: roomID, gameType });
         }
 
-        // サーバーからのイベントリスナー
+        // --- Socket Events ---
+
         socket.on('error', (msg) => alert(msg));
         
+        socket.on('joined', (data) => {
+            myColor = data.color;
+            currentGameType = data.gameType; // 部屋に入った時点で確定したゲームタイプ
+            console.log(`Joined as ${myColor} in ${currentGameType}`);
+        });
+
         socket.on('waiting', (msg) => {
             loginScreen.style.display = 'none';
             gameScreen.style.display = 'flex';
             msgEl.innerText = msg;
-            initBoard();
+            msgEl.style.color = '#888';
+            renderBoardWait();
         });
 
-        socket.on('playerColor', (color) => {
-            myColor = color;
-            console.log("You are: " + color);
-        });
-
-        socket.on('gameStart', ({ blackName, whiteName, turn }) => {
+        socket.on('gameStart', ({ p1, p2, gameType, turn }) => {
             loginScreen.style.display = 'none';
             gameScreen.style.display = 'flex';
-            document.getElementById('p1-info').innerText = `● ${blackName}`;
-            document.getElementById('p2-info').innerText = `○ ${whiteName}`;
-            msgEl.innerText = "GAME START";
-            updateTurnDisplay(turn);
             
-            // 盤面初期化（中央4つ）
-            initBoard();
-            placeStone(3, 3, 'white', false);
-            placeStone(4, 4, 'white', false);
-            placeStone(3, 4, 'black', false);
-            placeStone(4, 3, 'black', false);
+            document.getElementById('p1-info').innerText = `● ${p1}`;
+            document.getElementById('p2-info').innerText = `○ ${p2}`;
+            
+            currentGameType = gameType;
+            if(currentGameType === 'othello') {
+                setupOthello();
+            } else {
+                setupConnect4();
+            }
+            
+            updateTurn(turn);
+            msgEl.innerText = "GAME START";
         });
 
-        socket.on('updateBoard', ({ x, y, color }) => {
-            placeStone(x, y, color, true); // true=ひっくり返す処理あり
+        socket.on('changeTurn', (turn) => updateTurn(turn));
+        
+        socket.on('gameOver', ({ winner }) => {
+            myTurn = false;
+            if(winner === 'draw') {
+                msgEl.innerText = "DRAW GAME";
+            } else {
+                const winText = (winner === myColor) ? "YOU WIN !!" : "YOU LOSE...";
+                msgEl.innerText = winText;
+                msgEl.style.color = (winner === myColor) ? '#00ff88' : '#ff4444';
+            }
+            actionBtn.style.display = 'block';
+            actionBtn.innerText = 'RELOAD';
+            actionBtn.onclick = () => location.reload();
         });
 
-        socket.on('changeTurn', (nextTurn) => {
-            updateTurnDisplay(nextTurn);
-        });
+        // --- 共通関数 ---
+        function updateTurn(turn) {
+            const isP1Turn = (turn === 'black' || turn === 'red');
+            document.getElementById('p1-info').classList.toggle('active-turn', isP1Turn);
+            document.getElementById('p2-info').classList.toggle('active-turn', !isP1Turn);
+            
+            if(isP1Turn) {
+                document.getElementById('p1-info').style.color = currentGameType==='othello'?'#fff':'var(--neon-red)';
+                document.getElementById('p2-info').style.color = '#888';
+            } else {
+                document.getElementById('p1-info').style.color = '#888';
+                document.getElementById('p2-info').style.color = currentGameType==='othello'?'#fff':'var(--neon-yellow)';
+            }
 
-        // --- オセロのロジック ---
+            myTurn = (turn === myColor);
+            msgEl.innerText = myTurn ? "YOUR TURN" : "WAITING...";
+            msgEl.style.color = "#e0e0e0";
 
-        function initBoard() {
-            boardEl.innerHTML = '';
-            boardState = Array(8).fill(null).map(() => Array(8).fill(null));
-            for (let y = 0; y < 8; y++) {
-                for (let x = 0; x < 8; x++) {
-                    const cell = document.createElement('div');
-                    cell.className = 'cell';
-                    cell.dataset.x = x;
-                    cell.dataset.y = y;
-                    cell.onclick = () => handleCellClick(x, y);
-                    boardEl.appendChild(cell);
+            // オセロのパスボタン制御
+            if(currentGameType === 'othello' && myTurn) {
+                if(!canOthelloMove(myColor)) {
+                    actionBtn.style.display = 'block';
+                    actionBtn.innerText = 'PASS';
+                    actionBtn.onclick = () => {
+                        socket.emit('othelloPass', { room: roomID, color: myColor });
+                        actionBtn.style.display = 'none';
+                    };
+                    msgEl.innerText = "NO MOVES - PASS?";
+                } else {
+                    actionBtn.style.display = 'none';
                 }
             }
         }
 
-        function handleCellClick(x, y) {
-            if (!myTurn) return;
-            if (boardState[y][x] !== null) return;
-
-            // 置けるかチェック
-            const flipped = getFlippedStones(x, y, myColor);
-            if (flipped.length === 0) {
-                msgEl.innerText = "そこには置けません";
-                setTimeout(() => msgEl.innerText = "", 1000);
-                return;
-            }
-
-            // サーバーに送信
-            socket.emit('makeMove', { room: document.getElementById('room').value, x, y, color: myColor });
+        function renderBoardWait() {
+            boardArea.innerHTML = '<div style="width:300px; height:300px; border:1px dashed #555; display:flex; align-items:center; justify-content:center;">WAITING FOR PLAYER...</div>';
         }
 
-        function placeStone(x, y, color, doFlip) {
-            // 内部データを更新
-            boardState[y][x] = color;
+        // ==========================================
+        //         OTHELLO LOGIC
+        // ==========================================
+        
+        function setupOthello() {
+            boardArea.innerHTML = '';
+            const board = document.createElement('div');
+            board.className = 'othello-board';
+            
+            othelloBoard = Array(8).fill(null).map(() => Array(8).fill(null));
 
-            // 画面描画
-            const cell = document.querySelector(`.cell[data-x='${x}'][data-y='${y}']`);
+            for(let y=0; y<8; y++) {
+                for(let x=0; x<8; x++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'o-cell';
+                    cell.dataset.x = x;
+                    cell.dataset.y = y;
+                    cell.onclick = () => clickOthello(x, y);
+                    board.appendChild(cell);
+                }
+            }
+            boardArea.appendChild(board);
+            
+            // 初期配置
+            placeOthelloStone(3, 3, 'white', false);
+            placeOthelloStone(4, 4, 'white', false);
+            placeOthelloStone(3, 4, 'black', false);
+            placeOthelloStone(4, 3, 'black', false);
+        }
+
+        socket.on('othelloUpdate', ({ x, y, color }) => {
+            placeOthelloStone(x, y, color, true);
+        });
+
+        function clickOthello(x, y) {
+            if(!myTurn) return;
+            if(othelloBoard[y][x] !== null) return;
+            const flipped = getOthelloFlips(x, y, myColor);
+            if(flipped.length === 0) return; // 置けない
+
+            socket.emit('othelloMove', { room: roomID, x, y, color: myColor });
+        }
+
+        function placeOthelloStone(x, y, color, doFlip) {
+            othelloBoard[y][x] = color;
+            const cell = document.querySelector(`.o-cell[data-x='${x}'][data-y='${y}']`);
+            
             const stone = document.createElement('div');
-            stone.className = `stone ${color} stone-enter`;
+            stone.className = `o-stone o-${color}`;
+            // 登場アニメーション
+            stone.style.transform = 'scale(0)';
             cell.appendChild(stone);
+            setTimeout(() => stone.style.transform = 'scale(1)', 10);
 
-            // ひっくり返す処理
-            if (doFlip) {
-                const flipped = getFlippedStones(x, y, color);
+            if(doFlip) {
+                const flipped = getOthelloFlips(x, y, color);
                 flipped.forEach(pos => {
-                    boardState[pos.y][pos.x] = color; // データ更新
-                    const targetCell = document.querySelector(`.cell[data-x='${pos.x}'][data-y='${pos.y}']`);
+                    othelloBoard[pos.y][pos.x] = color;
+                    const targetCell = document.querySelector(`.o-cell[data-x='${pos.x}'][data-y='${pos.y}']`);
                     const targetStone = targetCell.firstChild;
-                    
-                    // アニメーション：一度消えて色が変わるのではなく、回転させる
                     targetStone.classList.add('flipping');
                     setTimeout(() => {
-                        targetStone.className = `stone ${color}`; // 色変更
-                        // targetStone.classList.remove('flipping'); // 回転戻すなら外す
+                        targetStone.className = `o-stone o-${color}`;
+                        targetStone.classList.remove('flipping');
                     }, 300);
                 });
             }
         }
 
-        function updateTurnDisplay(turn) {
-            const isBlack = (turn === 'black');
-            document.getElementById('p1-info').classList.toggle('active-turn', isBlack);
-            document.getElementById('p2-info').classList.toggle('active-turn', !isBlack);
-            
-            myTurn = (myColor === turn);
-            msgEl.innerText = myTurn ? "YOUR TURN" : "OPPONENT'S TURN";
-
-            // パスボタンの表示判定（自分のターンで、置ける場所がない場合）
-            if (myTurn && !canMakeMove(myColor)) {
-                passBtn.style.display = 'block';
-                msgEl.innerText = "PASS ?";
-            } else {
-                passBtn.style.display = 'none';
-            }
-        }
-
-        function passTurn() {
-            socket.emit('passTurn', { room: document.getElementById('room').value, color: myColor });
-        }
-
-        // 裏返せる石を探すロジック
-        function getFlippedStones(x, y, color) {
-            const directions = [
-                [-1, -1], [0, -1], [1, -1],
-                [-1, 0],           [1, 0],
-                [-1, 1],  [0, 1],  [1, 1]
-            ];
+        function getOthelloFlips(x, y, color) {
+            // ※簡易実装：裏返る石を計算（以前のロジックと同じ）
+            const directions = [[-1,-1],[0,-1],[1,-1],[-1,0],[1,0],[-1,1],[0,1],[1,1]];
             let flipped = [];
             const opponent = color === 'black' ? 'white' : 'black';
-
+            
             directions.forEach(dir => {
                 let temp = [];
-                let cx = x + dir[0];
-                let cy = y + dir[1];
-                
-                while (cx >= 0 && cx < 8 && cy >= 0 && cy < 8) {
-                    const cellColor = boardState[cy][cx];
-                    if (cellColor === opponent) {
-                        temp.push({x: cx, y: cy});
-                    } else if (cellColor === color) {
-                        flipped = flipped.concat(temp);
-                        break;
-                    } else {
-                        break;
-                    }
-                    cx += dir[0];
-                    cy += dir[1];
+                let cx = x + dir[0], cy = y + dir[1];
+                while(cx>=0 && cx<8 && cy>=0 && cy<8) {
+                    if(othelloBoard[cy][cx] === opponent) temp.push({x:cx, y:cy});
+                    else if(othelloBoard[cy][cx] === color) { flipped = flipped.concat(temp); break; }
+                    else break;
+                    cx+=dir[0]; cy+=dir[1];
                 }
             });
             return flipped;
         }
 
-        // どこかに置ける場所があるかチェック
-        function canMakeMove(color) {
-            for(let y=0; y<8; y++) {
-                for(let x=0; x<8; x++) {
-                    if(boardState[y][x] === null) {
-                        if(getFlippedStones(x, y, color).length > 0) return true;
-                    }
-                }
-            }
+        function canOthelloMove(color) {
+            for(let y=0; y<8; y++) 
+                for(let x=0; x<8; x++) 
+                    if(!othelloBoard[y][x] && getOthelloFlips(x, y, color).length > 0) return true;
             return false;
         }
+
+        // ==========================================
+        //         CONNECT 4 LOGIC
+        // ==========================================
+
+        function setupConnect4() {
+            boardArea.innerHTML = '';
+            const container = document.createElement('div');
+            container.className = 'c4-container';
+            
+            // ガイド
+            const guide = document.createElement('div');
+            guide.className = 'c4-guide';
+            guide.id = 'c4-guide';
+            container.appendChild(guide);
+
+            const board = document.createElement('div');
+            board.className = 'c4-board';
+
+            for(let r=0; r<6; r++) {
+                for(let c=0; c<7; c++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'c4-cell';
+                    board.appendChild(cell);
+                }
+            }
+            container.appendChild(board);
+            boardArea.appendChild(container);
+
+            // イベント
+            container.addEventListener('mousemove', (e) => {
+                if(!myTurn) { guide.style.opacity=0; return; }
+                const rect = container.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                let col = Math.floor((x - 10) / 58);
+                if(col<0) col=0; if(col>6) col=6;
+                
+                guide.style.opacity = 0.8;
+                guide.style.borderColor = myColor==='red'?'var(--neon-red)':'var(--neon-yellow)';
+                guide.style.left = (10 + col * 58) + 'px';
+                container.dataset.col = col;
+            });
+            
+            container.addEventListener('mouseleave', () => guide.style.opacity=0);
+            
+            container.addEventListener('click', () => {
+                if(!myTurn) return;
+                const col = container.dataset.col;
+                if(col !== undefined) {
+                    socket.emit('connect4Move', { room: roomID, col: parseInt(col) });
+                    myTurn = false; // 連打防止
+                    guide.style.opacity = 0;
+                }
+            });
+        }
+
+        socket.on('connect4Update', ({ row, col, color }) => {
+            const container = document.querySelector('.c4-container');
+            const piece = document.createElement('div');
+            const cClass = color === 'red' ? 'c4-red' : 'c4-yellow';
+            piece.className = `c4-piece ${cClass} falling`;
+            
+            piece.style.top = (10 + row * 58) + 'px';
+            piece.style.left = (10 + col * 58) + 'px';
+            
+            container.appendChild(piece);
+        });
+
     </script>
 </body>
 </html>
