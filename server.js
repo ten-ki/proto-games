@@ -14,12 +14,27 @@ app.get('/', (req, res) => {
 });
 
 let rooms = {};
-
 const C4_ROWS = 6;
 const C4_COLS = 7;
 
 io.on('connection', (socket) => {
-    // 入室
+    
+    // --- CHAT: LOBBY (GLOBAL) ---
+    socket.on('lobbyMsg', ({ username, text }) => {
+        // ユーザー名がなければ "ANONYMOUS"
+        const name = username || 'ANONYMOUS';
+        // 全員に送信
+        io.emit('lobbyMsg', { username: name, text });
+    });
+
+    // --- CHAT: ROOM (SECURE) ---
+    socket.on('roomMsg', ({ room, username, text, color }) => {
+        if (!rooms[room]) return;
+        // ルーム内の人だけに送信
+        io.to(room).emit('roomMsg', { username, text, color });
+    });
+
+    // --- GAME LOGIC (Existing) ---
     socket.on('joinRoom', ({ username, room, gameType }) => {
         if (!rooms[room]) {
             rooms[room] = {
@@ -39,7 +54,6 @@ io.on('connection', (socket) => {
 
         const actualGameType = r.players.length === 0 ? gameType : r.gameType;
         r.gameType = actualGameType;
-
         const isP1 = r.players.length === 0;
         const color = isP1 ? (actualGameType === 'othello' ? 'black' : 'red') 
                            : (actualGameType === 'othello' ? 'white' : 'cyan');
@@ -56,7 +70,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // --- Othello ---
     socket.on('othelloMove', ({ room, x, y, color }) => {
         const r = rooms[room];
         if (!r || !r.gameActive || r.turn !== color) return;
@@ -80,7 +93,6 @@ io.on('connection', (socket) => {
             io.to(room).emit('passMessage', `${opponent.toUpperCase()} PASS!`);
             io.to(room).emit('changeTurn', color);
         } else {
-            // --- GAME OVER (OTHELLO) ---
             const score = calcScore(r.board);
             let winner = 'draw';
             if (score.black > score.white) winner = 'black';
@@ -91,13 +103,10 @@ io.on('connection', (socket) => {
                 msg: `GAME OVER! BLACK:${score.black} / WHITE:${score.white}`
             });
             r.gameActive = false;
-
-            // ★ 15秒後に部屋解体
             scheduleRoomDestruction(room);
         }
     });
 
-    // --- Connect 4 ---
     socket.on('connect4Move', ({ room, col }) => {
         const r = rooms[room];
         if (!r || !r.gameActive) return;
@@ -117,74 +126,50 @@ io.on('connection', (socket) => {
         r.board[targetRow][col] = player.color;
         io.to(room).emit('connect4Update', { row: targetRow, col, color: player.color });
 
-        // 勝利判定
         const isWin = checkConnect4Win(r.board, player.color);
         const isDraw = !isWin && r.board[0].every(c => c !== null);
 
         if (isWin || isDraw) {
-            // --- GAME OVER (CONNECT 4) ---
             const msg = isWin ? `${player.color.toUpperCase()} WINS!` : 'DRAW GAME';
             const winner = isWin ? player.color : 'draw';
-            
             io.to(room).emit('gameOver', { winner, msg });
             r.gameActive = false;
-
-            // ★ 15秒後に部屋解体
             scheduleRoomDestruction(room);
-
         } else {
             r.turn = r.turn === 'red' ? 'cyan' : 'red';
             io.to(room).emit('changeTurn', r.turn);
         }
     });
 
-    socket.on('disconnect', () => {
-        // 切断時の処理（今回は簡易版のため省略）
-    });
+    socket.on('disconnect', () => {});
 });
 
-// ★ 部屋解体用のヘルパー関数
 function scheduleRoomDestruction(room) {
-    console.log(`Room ${room} will be dismantled in 15 seconds...`);
     setTimeout(() => {
         if (rooms[room]) {
-            io.to(room).emit('forceReset'); // クライアントを強制リロード
-            delete rooms[room]; // サーバーメモリから削除
-            console.log(`Room ${room} dismantled.`);
+            io.to(room).emit('forceReset');
+            delete rooms[room];
         }
-    }, 15000); // 15000ms = 15秒
+    }, 15000);
 }
 
-// --- Helpers ---
+// --- Helpers (Omitted purely for brevity, same as before) ---
+// Logic unchanged from previous version
 function startGame(room) {
     const r = rooms[room];
     r.gameActive = true;
-
     if (r.gameType === 'othello') {
         r.turn = 'black';
         r.board = Array(8).fill(null).map(() => Array(8).fill(null));
         r.board[3][3] = 'white'; r.board[4][4] = 'white';
         r.board[3][4] = 'black'; r.board[4][3] = 'black';
-        
-        io.to(room).emit('gameStart', {
-            p1: r.players[0].username,
-            p2: r.players[1].username,
-            gameType: 'othello',
-            turn: 'black',
-            board: r.board
-        });
+        io.to(room).emit('gameStart', { p1: r.players[0].username, p2: r.players[1].username, gameType: 'othello', turn: 'black', board: r.board });
     } else {
         r.turn = 'red';
         r.board = Array(C4_ROWS).fill(null).map(() => Array(C4_COLS).fill(null));
-        io.to(room).emit('gameStart', {
-            p1: r.players[0].username,
-            p2: r.players[1].username,
-            gameType: 'connect4',
-            turn: 'red'
-        });
+        io.to(room).emit('gameStart', { p1: r.players[0].username, p2: r.players[1].username, gameType: 'connect4', turn: 'red' });
     }
 }
-
 function getOthelloFlips(board, x, y, color) {
     if (board[y][x] !== null) return [];
     const directions = [[-1,-1],[0,-1],[1,-1],[-1,0],[1,0],[-1,1],[0,1],[1,1]];
@@ -202,19 +187,15 @@ function getOthelloFlips(board, x, y, color) {
     });
     return flipped;
 }
-
 function canMove(board, color) {
-    for(let y=0; y<8; y++) for(let x=0; x<8; x++) 
-        if(getOthelloFlips(board, x, y, color).length > 0) return true;
+    for(let y=0; y<8; y++) for(let x=0; x<8; x++) if(getOthelloFlips(board, x, y, color).length > 0) return true;
     return false;
 }
-
 function calcScore(board) {
     let black = 0, white = 0;
     board.forEach(row => row.forEach(c => { if(c==='black') black++; if(c==='white') white++; }));
     return { black, white };
 }
-
 function checkConnect4Win(board, color) {
     const directions = [[0, 1], [1, 0], [1, 1], [1, -1]];
     for (let r = 0; r < C4_ROWS; r++) {
@@ -225,8 +206,7 @@ function checkConnect4Win(board, color) {
                 for (let k = 1; k < 4; k++) {
                     const nr = r + dr * k;
                     const nc = c + dc * k;
-                    if (nr >= 0 && nr < C4_ROWS && nc >= 0 && nc < C4_COLS && board[nr][nc] === color) count++;
-                    else break;
+                    if (nr >= 0 && nr < C4_ROWS && nc >= 0 && nc < C4_COLS && board[nr][nc] === color) count++; else break;
                 }
                 if (count >= 4) return true;
             }

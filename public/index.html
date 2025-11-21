@@ -6,17 +6,15 @@
     <title>NITA GAME HUB // SYSTEM</title>
     <script src="/socket.io/socket.io.js"></script>
     <style>
-        /* --- CYBERPUNK CORE THEME --- */
+        /* --- CORE THEME --- */
         :root {
             --bg: #050505;
-            --panel-bg: rgba(20, 20, 20, 0.85);
+            --panel-bg: rgba(20, 20, 20, 0.9);
             --text: #e0e0e0;
-            
-            /* Colors */
             --othello-green: #00ff41;
             --c4-red: #ff0055;
             --c4-cyan: #00eaff;
-            --ring-color: rgba(255, 255, 255, 0.15);
+            --chat-bg: rgba(0, 20, 0, 0.6);
         }
         
         body {
@@ -27,146 +25,118 @@
             display: flex; flex-direction: column;
             align-items: center; justify-content: center;
             overflow: hidden;
-            background-image: 
-                linear-gradient(rgba(0, 255, 65, 0.03) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(0, 255, 65, 0.03) 1px, transparent 1px);
+            background-image: linear-gradient(rgba(0, 255, 65, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 255, 65, 0.03) 1px, transparent 1px);
             background-size: 30px 30px;
         }
 
+        /* Scanline */
         body::after {
-            content: " ";
-            display: block; position: absolute; top: 0; left: 0; bottom: 0; right: 0;
+            content: " "; display: block; position: absolute; top: 0; left: 0; bottom: 0; right: 0;
             background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%);
-            background-size: 100% 4px;
-            z-index: 2; pointer-events: none; opacity: 0.6;
+            background-size: 100% 4px; z-index: 2; pointer-events: none; opacity: 0.6;
         }
 
         h1 {
-            font-size: 2.5rem; letter-spacing: 0.2em; margin-bottom: 20px;
-            text-shadow: 0 0 10px rgba(255,255,255,0.3);
-            z-index: 10;
+            font-size: 2rem; letter-spacing: 0.2em; margin-bottom: 10px;
+            text-shadow: 0 0 10px rgba(255,255,255,0.3); z-index: 10;
         }
 
-        /* --- UI ELEMENTS --- */
+        /* --- LOGIN SCREEN LAYOUT --- */
         #login-screen {
-            background: var(--panel-bg); padding: 40px;
+            background: var(--panel-bg); padding: 30px;
             border: 1px solid #333; box-shadow: 0 0 30px rgba(0,0,0,0.8);
             backdrop-filter: blur(4px); border-radius: 4px;
             display: flex; flex-direction: column; gap: 15px;
             z-index: 10;
+            width: 400px;
         }
         
         input, select {
             background: #000; border: 1px solid #444; color: var(--text);
-            padding: 12px; font-family: inherit; font-size: 1rem; text-align: center;
-            outline: none; width: 280px; letter-spacing: 0.1em;
+            padding: 10px; font-family: inherit; font-size: 1rem; text-align: center;
+            outline: none; width: 100%; box-sizing: border-box;
             text-transform: uppercase;
         }
         input:focus, select:focus { border-color: var(--othello-green); box-shadow: 0 0 8px rgba(0, 255, 65, 0.3); }
 
         button {
             background: transparent; border: 1px solid var(--text); color: var(--text);
-            padding: 12px; font-family: inherit; font-weight: bold; cursor: pointer;
-            transition: 0.2s; letter-spacing: 0.2em; text-transform: uppercase;
+            padding: 10px; font-family: inherit; font-weight: bold; cursor: pointer;
+            transition: 0.2s; letter-spacing: 0.2em; text-transform: uppercase; width: 100%;
         }
-        button:hover {
-            background: var(--text); color: var(--bg);
-            box-shadow: 0 0 15px var(--text);
+        button:hover { background: var(--text); color: var(--bg); box-shadow: 0 0 15px var(--text); }
+
+        /* --- GAME SCREEN LAYOUT --- */
+        #game-screen { 
+            display: none; 
+            flex-direction: row; /* 横並び */
+            align-items: flex-start; 
+            gap: 40px;
+            z-index: 10; 
+        }
+        
+        .game-left-panel {
+            display: flex; flex-direction: column; align-items: center;
         }
 
-        #game-screen { display: none; flex-direction: column; align-items: center; z-index: 10; }
-        
-        .info-panel {
-            display: flex; gap: 50px; margin-bottom: 20px;
-            font-size: 1.2rem; text-transform: uppercase;
-        }
-        .player-label {
-            padding: 5px 10px; border-bottom: 2px solid transparent;
-            opacity: 0.4; transition: 0.3s;
-        }
+        .info-panel { display: flex; gap: 50px; margin-bottom: 20px; font-size: 1.2rem; text-transform: uppercase; }
+        .player-label { padding: 5px 10px; border-bottom: 2px solid transparent; opacity: 0.4; transition: 0.3s; }
         .active-turn { opacity: 1; transform: scale(1.1); text-shadow: 0 0 10px currentColor; border-color: currentColor; }
 
-        /* --- OTHELLO --- */
-        .othello-board {
-            display: grid; grid-template-columns: repeat(8, 50px); gap: 2px;
-            background: #111; border: 2px solid #333; padding: 5px;
-            box-shadow: 0 0 40px rgba(0,0,0,0.5);
+        /* --- CHAT SYSTEM STYLES --- */
+        .chat-container {
+            border: 1px solid #333;
+            background: var(--chat-bg);
+            padding: 10px;
+            display: flex; flex-direction: column; gap: 10px;
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.8);
         }
-        .o-cell {
-            width: 50px; height: 50px; background: #0a1f0a; border: 1px solid #143314;
-            display: flex; align-items: center; justify-content: center; cursor: pointer;
-        }
-        .o-cell:hover { background: #143314; }
 
-        .o-stone {
-            width: 40px; height: 40px; border-radius: 50%;
-            transition: transform 0.5s;
+        #lobby-chat-panel { margin-top: 20px; height: 200px; }
+        #game-chat-panel { width: 300px; height: 500px; } /* ゲーム横のチャット */
+
+        .chat-log {
+            flex-grow: 1; overflow-y: auto;
+            font-size: 0.85rem; line-height: 1.4;
+            text-align: left;
+            border-bottom: 1px solid #333;
+            padding-bottom: 5px;
+            scrollbar-width: thin; scrollbar-color: #444 #000;
         }
-        .o-black { 
-            background: #111; 
-            box-shadow: inset 3px 3px 5px rgba(255,255,255,0.3), 0 0 5px #000;
-            border: 1px solid #333; 
-        }
+        .chat-log::-webkit-scrollbar { width: 6px; }
+        .chat-log::-webkit-scrollbar-track { background: #000; }
+        .chat-log::-webkit-scrollbar-thumb { background: #444; }
+
+        .chat-msg { margin-bottom: 4px; word-wrap: break-word; }
+        .msg-user { color: var(--othello-green); font-weight: bold; margin-right: 5px; }
+        .msg-system { color: #ffaa00; font-style: italic; }
+        .msg-text { color: #ccc; }
+
+        .chat-input-area { display: flex; gap: 5px; }
+        .chat-input-area input { text-align: left; width: auto; flex-grow: 1; font-size: 0.8rem; padding: 8px; }
+        .chat-input-area button { width: auto; padding: 8px 15px; font-size: 0.8rem; }
+
+        /* --- GAME BOARD STYLES (Minimal changes) --- */
+        .othello-board { display: grid; grid-template-columns: repeat(8, 50px); gap: 2px; background: #111; border: 2px solid #333; padding: 5px; box-shadow: 0 0 40px rgba(0,0,0,0.5); }
+        .o-cell { width: 50px; height: 50px; background: #0a1f0a; border: 1px solid #143314; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+        .o-stone { width: 40px; height: 40px; border-radius: 50%; transition: transform 0.5s; }
+        .o-black { background: #111; box-shadow: inset 3px 3px 5px rgba(255,255,255,0.3), 0 0 5px #000; border: 1px solid #333; }
         .o-white { background: #eee; box-shadow: 0 0 10px #fff; }
         .flipping { animation: flipAnim 0.5s ease-in-out; }
         @keyframes flipAnim { 0% { transform: rotateY(0); } 50% { transform: rotateY(90deg); } 100% { transform: rotateY(0); } }
 
-
-        /* --- GRAVITY (CONNECT 4) --- */
-        .c4-container {
-            position: relative; padding: 20px;
-            border: 2px solid #444; border-radius: 15px;
-            background: rgba(255, 255, 255, 0.03);
-            box-shadow: 0 0 30px rgba(0,0,0,0.5);
-            cursor: pointer;
-        }
-
-        .c4-grid-layer {
-            display: grid; grid-template-columns: repeat(7, 60px); gap: 10px;
-            position: relative; z-index: 10; pointer-events: none;
-        }
-
-        .c4-ring {
-            width: 60px; height: 60px;
-            border: 3px solid var(--ring-color);
-            border-radius: 50%;
-            box-shadow: inset 0 0 5px rgba(0,0,0,0.5);
-        }
-
-        .c4-piece {
-            position: absolute; width: 60px; height: 60px; border-radius: 50%;
-            z-index: 5; transform: scale(0.9);
-        }
-
+        .c4-container { position: relative; padding: 20px; border: 2px solid #444; border-radius: 15px; background: rgba(255, 255, 255, 0.03); box-shadow: 0 0 30px rgba(0,0,0,0.5); cursor: pointer; }
+        .c4-grid-layer { display: grid; grid-template-columns: repeat(7, 60px); gap: 10px; position: relative; z-index: 10; pointer-events: none; }
+        .c4-ring { width: 60px; height: 60px; border: 3px solid rgba(255, 255, 255, 0.15); border-radius: 50%; box-shadow: inset 0 0 5px rgba(0,0,0,0.5); }
+        .c4-piece { position: absolute; width: 60px; height: 60px; border-radius: 50%; z-index: 5; transform: scale(0.9); }
         .c4-red { background: var(--c4-red); box-shadow: 0 0 15px var(--c4-red), inset 0 0 10px rgba(255,255,255,0.5); }
         .c4-cyan { background: var(--c4-cyan); box-shadow: 0 0 15px var(--c4-cyan), inset 0 0 10px rgba(255,255,255,0.5); }
-
         .falling { animation: dropBounce 0.6s cubic-bezier(0.5, 0.05, 0.1, 0.3) forwards; }
-        @keyframes dropBounce {
-            0% { transform: translateY(-400px) scale(0.9); opacity: 0; }
-            60% { transform: translateY(0) scale(0.9); opacity: 1; }
-            80% { transform: translateY(-15px) scale(0.9); }
-            100% { transform: translateY(0) scale(0.9); }
-        }
+        @keyframes dropBounce { 0% { transform: translateY(-400px) scale(0.9); opacity: 0; } 60% { transform: translateY(0) scale(0.9); opacity: 1; } 80% { transform: translateY(-15px) scale(0.9); } 100% { transform: translateY(0) scale(0.9); } }
+        .c4-guide { position: absolute; top: -50px; width: 60px; height: 60px; border-radius: 50%; border: 2px dashed #fff; opacity: 0; transition: left 0.1s, opacity 0.2s; pointer-events: none; z-index: 20; }
 
-        .c4-guide {
-            position: absolute; top: -50px; 
-            width: 60px; height: 60px; border-radius: 50%;
-            border: 2px dashed #fff; opacity: 0; 
-            transition: left 0.1s, opacity 0.2s;
-            pointer-events: none; z-index: 20;
-        }
-
-        #message {
-            margin-top: 25px; font-size: 1.5rem; letter-spacing: 0.1em;
-            text-shadow: 0 0 10px currentColor; min-height: 1.5em;
-        }
-        
-        /* Countdown style */
-        .system-msg {
-            font-size: 1rem; color: #ff0055; margin-top: 10px; 
-            animation: blink 1s infinite;
-        }
+        #message { margin-top: 25px; font-size: 1.5rem; letter-spacing: 0.1em; text-shadow: 0 0 10px currentColor; min-height: 1.5em; }
+        .system-msg { font-size: 1rem; color: #ff0055; margin-top: 10px; animation: blink 1s infinite; }
         @keyframes blink { 50% { opacity: 0.5; } }
 
     </style>
@@ -175,6 +145,7 @@
 
     <h1>NITA GAME HUB</h1>
 
+    <!-- LOGIN SCREEN + LOBBY CHAT -->
     <div id="login-screen">
         <div style="text-align:center; font-size:0.8rem; color:#666;">// SYSTEM LOGIN</div>
         <input type="text" id="username" placeholder="CODENAME (NAME)" maxlength="10">
@@ -184,36 +155,120 @@
             <option value="connect4">GRAVITY (CONNECT 4)</option>
         </select>
         <button onclick="joinGame()">INITIALIZE LINK</button>
+
+        <!-- LOBBY CHAT -->
+        <div class="chat-container" id="lobby-chat-panel">
+            <div style="font-size:0.7rem; color:#666; border-bottom:1px dashed #444;">// GLOBAL FREQUENCY</div>
+            <div class="chat-log" id="lobby-log"></div>
+            <div class="chat-input-area">
+                <input type="text" id="lobby-input" placeholder="BROADCAST..." onkeydown="if(event.key==='Enter') sendLobbyChat()">
+                <button onclick="sendLobbyChat()">TX</button>
+            </div>
+        </div>
     </div>
 
+    <!-- GAME SCREEN + ROOM CHAT -->
     <div id="game-screen">
-        <div class="info-panel">
-            <div id="p1-info" class="player-label">P1</div>
-            <div id="p2-info" class="player-label">P2</div>
+        <!-- Left Panel: Board & Game Info -->
+        <div class="game-left-panel">
+            <div class="info-panel">
+                <div id="p1-info" class="player-label">P1</div>
+                <div id="p2-info" class="player-label">P2</div>
+            </div>
+
+            <div id="board-area"></div>
+            <div id="message"></div>
+            <div id="system-status" class="system-msg"></div>
+            <button id="restart-btn" style="display:none; margin-top:20px;" onclick="location.reload()">REBOOT SYSTEM</button>
         </div>
 
-        <div id="board-area"></div>
-        <div id="message"></div>
-        <!-- Countdown Message Area -->
-        <div id="system-status" class="system-msg"></div>
+        <!-- Right Panel: Room Chat -->
+        <div class="chat-container" id="game-chat-panel">
+            <div style="font-size:0.7rem; color:#666; border-bottom:1px dashed #444;">// SECURE CHANNEL (ROOM)</div>
+            <div class="chat-log" id="room-log"></div>
+            <div class="chat-input-area">
+                <input type="text" id="room-input" placeholder="ENCRYPTED MSG..." onkeydown="if(event.key==='Enter') sendRoomChat()">
+                <button onclick="sendRoomChat()">TX</button>
+            </div>
+        </div>
     </div>
 
     <script>
         const socket = io();
+        let myUsername = '';
         let myColor = null;
         let myTurn = false;
         let roomID = '';
         let currentGameType = '';
+        
         const boardArea = document.getElementById('board-area');
         const msgEl = document.getElementById('message');
         const sysEl = document.getElementById('system-status');
 
+        // --- CHAT FUNCTIONS ---
+        
+        // Lobby Chat
+        function sendLobbyChat() {
+            const input = document.getElementById('lobby-input');
+            const text = input.value.trim();
+            if(!text) return;
+            
+            // Get username from input even if not joined yet
+            const tempName = document.getElementById('username').value || 'ANONYMOUS';
+            socket.emit('lobbyMsg', { username: tempName, text });
+            input.value = '';
+        }
+
+        socket.on('lobbyMsg', ({ username, text }) => {
+            addLog('lobby-log', username, text);
+        });
+
+        // Room Chat
+        function sendRoomChat() {
+            const input = document.getElementById('room-input');
+            const text = input.value.trim();
+            if(!text) return;
+            
+            socket.emit('roomMsg', { room: roomID, username: myUsername, text, color: myColor });
+            input.value = '';
+        }
+
+        socket.on('roomMsg', ({ username, text, color }) => {
+            addLog('room-log', username, text, color);
+        });
+
+        function addLog(elementId, user, text, colorOverride = null) {
+            const log = document.getElementById(elementId);
+            const div = document.createElement('div');
+            div.className = 'chat-msg';
+            
+            const userSpan = document.createElement('span');
+            userSpan.className = 'msg-user';
+            userSpan.innerText = `[${user}]`;
+            if(colorOverride === 'red') userSpan.style.color = 'var(--c4-red)';
+            if(colorOverride === 'cyan') userSpan.style.color = 'var(--c4-cyan)';
+            if(colorOverride === 'black') userSpan.style.color = '#aaa'; // Visible black
+            if(colorOverride === 'white') userSpan.style.color = '#fff';
+
+            const textSpan = document.createElement('span');
+            textSpan.className = 'msg-text';
+            textSpan.innerText = `: ${text}`;
+
+            div.appendChild(userSpan);
+            div.appendChild(textSpan);
+            log.appendChild(div);
+            log.scrollTop = log.scrollHeight; // Auto scroll
+        }
+
+
+        // --- GAME FUNCTIONS ---
+
         function joinGame() {
-            const username = document.getElementById('username').value;
+            myUsername = document.getElementById('username').value;
             roomID = document.getElementById('room').value;
             const gameType = document.getElementById('gameType').value;
-            if(!username || !roomID) return alert("MISSING CREDENTIALS");
-            socket.emit('joinRoom', { username, room: roomID, gameType });
+            if(!myUsername || !roomID) return alert("MISSING CREDENTIALS");
+            socket.emit('joinRoom', { username: myUsername, room: roomID, gameType });
         }
 
         socket.on('joined', (data) => {
@@ -226,6 +281,9 @@
             document.getElementById('game-screen').style.display = 'flex';
             boardArea.innerHTML = `<div style="padding:40px; border:1px dashed #444; color:#666;">${msg}</div>`;
             msgEl.innerText = "";
+            
+            // System Msg in Chat
+            addLog('room-log', 'SYSTEM', 'ESTABLISHING SECURE CONNECTION...');
         });
 
         socket.on('gameStart', ({ p1, p2, gameType, turn, board }) => {
@@ -234,7 +292,10 @@
             document.getElementById('p1-info').innerText = p1;
             document.getElementById('p2-info').innerText = p2;
             currentGameType = gameType;
-            sysEl.innerText = ""; // Clear system msg
+            sysEl.innerText = ""; 
+
+            // System Msg
+            addLog('room-log', 'SYSTEM', `MATCH STARTED: ${p1} VS ${p2}`);
 
             if(gameType === 'othello') renderOthello(board);
             else setupConnect4();
@@ -254,8 +315,10 @@
             } else {
                 msgEl.style.color = (winner === myColor) ? '#00ff41' : '#ff0055';
             }
+            
+            addLog('room-log', 'SYSTEM', `GAME OVER: ${msg}`);
 
-            // --- COUNTDOWN LOGIC ---
+            // Purge Countdown
             let countdown = 15;
             sysEl.style.color = "#ff0055";
             const interval = setInterval(() => {
@@ -265,15 +328,11 @@
             }, 1000);
         });
 
-        // ★ Server forces a reset
-        socket.on('forceReset', () => {
-            location.reload();
-        });
-        
+        socket.on('forceReset', () => location.reload());
         socket.on('connect4Update', ({ row, col, color }) => dropPiece(row, col, color));
         socket.on('error', (msg) => alert(msg));
 
-        // --- UI Logic ---
+        // --- RENDER LOGIC ---
         function updateTurn(turn) {
             const isP1 = (turn === 'black' || turn === 'red');
             const p1Label = document.getElementById('p1-info');
@@ -333,8 +392,7 @@
             }
             c4Container.appendChild(gridLayer);
             boardArea.appendChild(c4Container);
-            const COL_WIDTH = 70; 
-            const PADDING = 20;
+            const COL_WIDTH = 70; const PADDING = 20;
             c4Container.addEventListener('mousemove', (e) => {
                 if(!myTurn) { guide.style.opacity=0; return; }
                 const rect = c4Container.getBoundingClientRect();
