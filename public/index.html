@@ -25,7 +25,6 @@
             font-family: 'Courier New', monospace;
             display: flex; flex-direction: column;
             overflow: hidden;
-            /* Grid Background */
             background-image: 
                 linear-gradient(var(--grid-line) 1px, transparent 1px),
                 linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
@@ -40,7 +39,6 @@
         }
 
         /* --- LAYOUT --- */
-        /* Main container splitting Game (Left) and Chat (Right) */
         #main-interface {
             display: flex; width: 100%; height: 100%;
             padding: 20px; box-sizing: border-box; gap: 20px;
@@ -48,7 +46,7 @@
         }
 
         #game-viewport {
-            flex: 3; /* Takes up 75% width */
+            flex: 3;
             display: flex; flex-direction: column;
             align-items: center; justify-content: center;
             border: 1px solid #333; border-radius: 10px;
@@ -58,7 +56,7 @@
         }
 
         #sidebar-panel {
-            flex: 1; /* Takes up 25% width */
+            flex: 1;
             display: flex; flex-direction: column;
             border: 1px solid #333; border-radius: 10px;
             background: rgba(0, 10, 0, 0.9);
@@ -74,19 +72,32 @@
         }
         h1 span { font-size: 0.5em; color: #666; vertical-align: middle; }
 
-        /* --- LOGIN SCREEN --- */
+        /* --- LOGIN SCREEN (With LOBBY CHAT) --- */
         #login-overlay {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.8); backdrop-filter: blur(5px);
-            z-index: 100; display: flex; align-items: center; justify-content: center;
+            background: rgba(0,0,0,0.85); backdrop-filter: blur(5px);
+            z-index: 100; display: flex; gap: 40px; /* Login & Chat Side by Side */
+            align-items: center; justify-content: center;
         }
+        
         .login-box {
             background: #111; padding: 40px; border: 1px solid #444;
             display: flex; flex-direction: column; gap: 15px; width: 350px;
-            box-shadow: 0 0 40px var(--accent-green);
-            border-radius: 5px;
+            box-shadow: 0 0 40px var(--accent-green); border-radius: 5px;
         }
         .login-box h2 { margin: 0 0 10px 0; text-align: center; font-size: 1rem; color: #888; letter-spacing: 0.3em; }
+
+        /* Lobby Chat in Login Screen */
+        .lobby-chat-box {
+            width: 350px; height: 400px;
+            background: rgba(0,20,0,0.8); border: 1px solid #444;
+            display: flex; flex-direction: column;
+            box-shadow: 0 0 30px rgba(0,0,0,0.8);
+        }
+        .lobby-header { padding: 10px; background: #111; color: #666; font-size: 0.8rem; border-bottom: 1px solid #444; letter-spacing: 0.1em; }
+        #lobby-log { flex-grow: 1; padding: 10px; overflow-y: auto; font-size: 0.8rem; color: #ccc; }
+        #lobby-input-area { display: flex; border-top: 1px solid #444; }
+        #lobby-input { flex-grow: 1; border: none; padding: 10px; background: #000; color: #fff; outline: none; }
 
         /* --- INPUTS & BUTTONS --- */
         input, select, button {
@@ -95,14 +106,13 @@
             text-transform: uppercase; transition: 0.3s;
         }
         input:focus, select:focus { border-color: var(--accent-green); box-shadow: 0 0 10px rgba(0,255,65,0.3); }
-        
         button { cursor: pointer; font-weight: bold; letter-spacing: 0.1em; }
         button:hover { background: var(--accent-green); color: #000; box-shadow: 0 0 15px var(--accent-green); }
         
-        .btn-secondary { border-color: #666; color: #888; }
-        .btn-secondary:hover { background: #333; color: #fff; box-shadow: none; }
+        .btn-ready { border-color: var(--accent-gold); color: var(--accent-gold); }
+        .btn-ready:hover { background: var(--accent-gold); color: #000; box-shadow: 0 0 15px var(--accent-gold); }
 
-        /* --- CHAT (SIDEBAR) --- */
+        /* --- SIDEBAR (ROOM CHAT) --- */
         .sidebar-header {
             padding: 10px; border-bottom: 1px solid #333;
             font-size: 0.8rem; color: #666; letter-spacing: 0.2em;
@@ -121,32 +131,19 @@
         #chat-input { flex-grow: 1; border: none; padding: 15px; font-size: 0.9rem; }
         #chat-send { width: auto; border: none; border-left: 1px solid #333; color: var(--accent-green); }
 
-        /* --- BOARD GAMES UI --- */
-        .game-hud {
-            margin-bottom: 20px; display: flex; gap: 40px;
-            font-size: 1.5rem; text-transform: uppercase;
-        }
+        /* --- GAME UI --- */
+        .game-hud { margin-bottom: 20px; display: flex; gap: 40px; font-size: 1.5rem; text-transform: uppercase; }
         .p-label { opacity: 0.3; border-bottom: 2px solid transparent; padding: 5px; transition: 0.3s; }
         .p-active { opacity: 1; transform: scale(1.1); text-shadow: 0 0 10px currentColor; border-color: currentColor; }
 
-        /* Othello */
-        .othello-board {
-            display: grid; grid-template-columns: repeat(8, 50px); gap: 2px;
-            background: #111; padding: 5px; border: 2px solid #444;
-            box-shadow: 0 0 30px rgba(0,0,0,0.5);
-        }
+        /* Othello/C4 Styles (Same as before) */
+        .othello-board { display: grid; grid-template-columns: repeat(8, 50px); gap: 2px; background: #111; padding: 5px; border: 2px solid #444; box-shadow: 0 0 30px rgba(0,0,0,0.5); }
         .o-cell { width: 50px; height: 50px; background: #0a2a0a; display: flex; justify-content: center; align-items: center; cursor: pointer; }
-        .o-cell:hover { background: #143f14; }
         .o-stone { width: 40px; height: 40px; border-radius: 50%; transition: transform 0.5s; }
         .o-black { background: #111; border: 1px solid #444; box-shadow: inset 2px 2px 5px rgba(255,255,255,0.2); }
         .o-white { background: #eee; box-shadow: 0 0 10px #fff; }
         .flipping { animation: flip 0.5s; } @keyframes flip { 0%{transform:rotateY(0)} 50%{transform:rotateY(90deg)} 100%{transform:rotateY(0)} }
-
-        /* Connect 4 */
-        .c4-board {
-            position: relative; padding: 15px; border: 2px solid #444; border-radius: 10px;
-            background: rgba(255,255,255,0.05); box-shadow: 0 0 30px rgba(0,0,0,0.5); cursor: pointer;
-        }
+        .c4-board { position: relative; padding: 15px; border: 2px solid #444; border-radius: 10px; background: rgba(255,255,255,0.05); box-shadow: 0 0 30px rgba(0,0,0,0.5); cursor: pointer; }
         .c4-grid { display: grid; grid-template-columns: repeat(7, 60px); gap: 10px; position: relative; z-index: 10; pointer-events: none; }
         .c4-hole { width: 60px; height: 60px; border: 4px solid rgba(255,255,255,0.1); border-radius: 50%; }
         .c4-piece { position: absolute; width: 60px; height: 60px; border-radius: 50%; z-index: 5; transform: scale(0.9); }
@@ -158,8 +155,7 @@
         #bj-table {
             width: 90%; height: 90%; position: relative;
             background: radial-gradient(circle at center, rgba(0,40,0,0.5), rgba(0,10,0,0.9));
-            border-radius: 100px; border: 4px double #444;
-            display: none; /* JS toggles */
+            border-radius: 100px; border: 4px double #444; display: none;
         }
         .bj-dealer { position: absolute; top: 10%; width: 100%; display: flex; justify-content: center; flex-direction: column; align-items: center; }
         .bj-seats { position: absolute; bottom: 5%; width: 100%; display: flex; justify-content: space-around; align-items: flex-end; }
@@ -170,9 +166,7 @@
             transition: 0.3s; display: flex; flex-direction: column; align-items: center;
         }
         .bj-seat.active { border-color: #fff; box-shadow: 0 0 20px rgba(255,255,255,0.2); background: rgba(50,50,50,0.7); }
-        .bj-info { font-size: 0.75rem; color: #aaa; margin-top: 5px; }
         .bj-score { color: var(--accent-gold); font-weight: bold; font-size: 1rem; }
-
         .cards { display: flex; justify-content: center; height: 70px; margin-top: 5px; }
         .card {
             width: 45px; height: 65px; background: #eee; color: #000; border-radius: 4px;
@@ -185,7 +179,6 @@
         .card.back { background: #222; border-color: #444; background-image: repeating-linear-gradient(45deg, #333 0, #333 5px, #444 5px, #444 10px); }
         @keyframes deal { from{opacity:0; transform:translateY(-50px) rotate(10deg);} to{opacity:1; transform:translateY(0) rotate(0);} }
 
-        /* BJ Betting Overlay */
         #bet-ui {
             position: absolute; top:0; left:0; width:100%; height:100%;
             background: rgba(0,0,0,0.85); z-index: 20; border-radius: 90px;
@@ -195,26 +188,24 @@
         .chip {
             width: 70px; height: 70px; border-radius: 50%; border: 2px solid var(--accent-gold);
             background: #000; color: var(--accent-gold); display: flex; justify-content: center; align-items: center;
-            font-weight: bold; font-size: 1.2rem; cursor: pointer; transition: 0.2s;
-            box-shadow: 0 0 10px var(--accent-gold);
+            font-weight: bold; font-size: 1.2rem; cursor: pointer; transition: 0.2s; box-shadow: 0 0 10px var(--accent-gold);
         }
         .chip:hover { background: var(--accent-gold); color: #000; transform: scale(1.1); }
 
-        /* --- SYSTEM MESSAGES --- */
         #sys-msg-overlay {
             position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
             color: #fff; font-size: 1.2rem; text-shadow: 0 0 10px rgba(255,255,255,0.8);
             pointer-events: none; z-index: 30; text-align: center;
         }
-
         @keyframes fadeIn { from{opacity:0;} to{opacity:1;} }
 
     </style>
 </head>
 <body>
 
-    <!-- LOGIN MODAL -->
+    <!-- LOGIN MODAL WITH LOBBY CHAT -->
     <div id="login-overlay">
+        <!-- Login Form -->
         <div class="login-box">
             <h1>NITA GAMES <span>// SYSTEM LOGIN</span></h1>
             <input type="text" id="username" placeholder="CODENAME" maxlength="10">
@@ -226,6 +217,16 @@
             </select>
             <button onclick="joinGame()">INITIALIZE LINK</button>
         </div>
+
+        <!-- Lobby Chat (Global Frequency) -->
+        <div class="lobby-chat-box">
+            <div class="lobby-header">// GLOBAL FREQUENCY (OPEN CHAT)</div>
+            <div id="lobby-log"></div>
+            <div id="lobby-input-area">
+                <input type="text" id="lobby-input" placeholder="BROADCAST..." onkeydown="if(event.key==='Enter') sendLobbyChat()">
+                <button style="width:auto; border:none; border-left:1px solid #444;" onclick="sendLobbyChat()">TX</button>
+            </div>
+        </div>
     </div>
 
     <!-- MAIN INTERFACE -->
@@ -234,13 +235,12 @@
 
         <!-- GAME AREA (LEFT) -->
         <div id="game-viewport">
-            <!-- 1v1 HUD -->
             <div class="game-hud" id="vs-hud" style="display:none;">
                 <div id="p1-lbl" class="p-label">PLAYER 1</div>
                 <div id="p2-lbl" class="p-label">PLAYER 2</div>
             </div>
             
-            <div id="board-container"></div> <!-- Othello/C4 -->
+            <div id="board-container"></div>
 
             <!-- BLACKJACK TABLE -->
             <div id="bj-table">
@@ -265,12 +265,12 @@
             <div id="sys-msg-overlay"></div>
         </div>
 
-        <!-- SIDEBAR (RIGHT): CHAT & LOGS -->
+        <!-- SIDEBAR (RIGHT): ROOM CHAT -->
         <div id="sidebar-panel">
-            <div class="sidebar-header">// COMMS & LOGS</div>
+            <div class="sidebar-header">// ROOM COMMS (SECURE)</div>
             <div id="chat-log"></div>
             <div id="chat-input-area">
-                <input type="text" id="chat-input" placeholder="TRANSMIT MESSAGE..." onkeydown="if(event.key==='Enter') sendChat()">
+                <input type="text" id="chat-input" placeholder="TRANSMIT..." onkeydown="if(event.key==='Enter') sendChat()">
                 <button id="chat-send" onclick="sendChat()">TX</button>
             </div>
         </div>
@@ -282,48 +282,48 @@
         let myUser = '';
         let myColor = '';
         let gameType = '';
-        let mySeat = -1;
+        
+        // --- CHAT (LOBBY & ROOM) ---
+        function sendLobbyChat() {
+            const inp = document.getElementById('lobby-input');
+            const txt = inp.value.trim();
+            const tempUser = document.getElementById('username').value || 'ANONYMOUS';
+            if(txt) { socket.emit('lobbyMsg', { username: tempUser, text: txt }); inp.value = ''; }
+        }
+        socket.on('lobbyMsg', d => {
+            const l = document.getElementById('lobby-log');
+            l.innerHTML += `<div style="margin-bottom:4px;"><span style="color:#00ff41;">[${d.username}]</span> ${d.text}</div>`;
+            l.scrollTop = l.scrollHeight;
+        });
 
-        // --- CORE FUNCTIONS ---
+        function sendChat() {
+            const inp = document.getElementById('chat-input');
+            const txt = inp.value.trim();
+            if(txt) { socket.emit('roomMsg', { room: roomID, username: myUser, text: txt, color: myColor }); inp.value = ''; }
+        }
+        socket.on('roomMsg', d => logChat(d.username, d.text, d.color, false));
+
+        function logChat(user, text, color, isSys) {
+            const div = document.createElement('div'); div.className = 'chat-entry';
+            if(isSys) div.innerHTML = `<span class="sys-tag">[SYSTEM]</span> <span style="color:#ccc">${text}</span>`;
+            else {
+                const c = color === 'black' ? '#aaa' : (color === 'white' ? '#fff' : color);
+                div.innerHTML = `<span class="user-tag" style="color:${c}">[${user}]</span> <span style="color:#ddd">${text}</span>`;
+            }
+            const log = document.getElementById('chat-log'); log.appendChild(div); log.scrollTop = log.scrollHeight;
+        }
+
+        // --- JOIN & GAME ---
         function joinGame() {
             myUser = document.getElementById('username').value || 'ANONYMOUS';
             roomID = document.getElementById('room').value;
             gameType = document.getElementById('gameType').value;
             if(!roomID) return alert("ROOM ID REQUIRED");
-            
             socket.emit('joinRoom', { username: myUser, room: roomID, gameType });
         }
 
-        function sendChat() {
-            const inp = document.getElementById('chat-input');
-            const txt = inp.value.trim();
-            if(txt) {
-                socket.emit('roomMsg', { room: roomID, username: myUser, text: txt, color: myColor });
-                inp.value = '';
-            }
-        }
-
-        function logChat(user, text, color, isSys) {
-            const div = document.createElement('div');
-            div.className = 'chat-entry';
-            if(isSys) {
-                div.innerHTML = `<span class="sys-tag">[SYSTEM]</span> <span style="color:#ccc">${text}</span>`;
-            } else {
-                const c = color === 'black' ? '#aaa' : (color === 'white' ? '#fff' : color);
-                div.innerHTML = `<span class="user-tag" style="color:${c}">[${user}]</span> <span style="color:#ddd">${text}</span>`;
-            }
-            const log = document.getElementById('chat-log');
-            log.appendChild(div);
-            log.scrollTop = log.scrollHeight;
-        }
-
-        // --- SOCKET EVENTS ---
-        socket.on('roomMsg', d => logChat(d.username, d.text, d.color, false));
-        
         socket.on('joined', d => {
-            myColor = d.color;
-            gameType = d.gameType;
-            mySeat = d.mySeat;
+            myColor = d.color; gameType = d.gameType;
             document.getElementById('login-overlay').style.display = 'none';
             document.getElementById('main-interface').style.display = 'flex';
             logChat('SYS', 'CONNECTION ESTABLISHED', null, true);
@@ -334,18 +334,8 @@
                 document.getElementById('vs-hud').style.display = 'none';
                 document.getElementById('board-container').innerHTML = '';
                 document.getElementById('bj-table').style.display = 'block';
+                document.getElementById('bj-round-info').innerText = `ROUND: -/${d.maxRounds}`;
                 renderBjSeats(d.players);
-                
-                // Lobby Logic
-                const me = d.players.find(p => p.id === socket.id);
-                if(!me.ready && d.players.every(p => p.hand.length === 0)) {
-                    document.getElementById('sys-msg-overlay').innerHTML = `
-                        <button class="btn-secondary" onclick="socket.emit('bjVoteStart',{room:roomID,rounds:5})">VOTE: 5 ROUNDS</button>
-                        <button class="btn-secondary" onclick="socket.emit('bjVoteStart',{room:roomID,rounds:10})">VOTE: 10 ROUNDS</button>
-                    `;
-                } else {
-                    document.getElementById('sys-msg-overlay').innerHTML = '';
-                }
             }
         });
 
@@ -356,49 +346,46 @@
                 document.getElementById('vs-hud').style.display = 'flex';
                 document.getElementById('p1-lbl').innerText = d.p1;
                 document.getElementById('p2-lbl').innerText = d.p2;
-                
-                if(d.gameType === 'othello') renderOthello(d.board);
-                else setupC4();
+                if(d.gameType === 'othello') renderOthello(d.board); else setupC4();
                 updateTurn(d.turn);
             }
         });
 
-        // --- BJ UI ---
+        // --- BJ UI & LOGIC ---
         function renderBjSeats(players) {
-            const c = document.getElementById('bj-seats');
-            c.innerHTML = '';
+            const c = document.getElementById('bj-seats'); c.innerHTML = '';
             players.forEach((p, i) => {
                 const div = document.createElement('div');
-                div.className = 'bj-seat';
-                div.id = `seat-${i}`;
+                div.className = 'bj-seat'; div.id = `seat-${i}`;
                 div.innerHTML = `
                     <div style="color:${p.color}; font-weight:bold;">${p.username}</div>
                     <div class="bj-score">${p.score}PTS</div>
-                    <div class="bj-info">BET: ${p.currentBet}</div>
+                    <div class="bj-info" style="color:#fff; font-weight:bold;" id="status-${i}">${p.ready?'READY':''}</div>
                     <div class="cards" id="hand-${i}"></div>
-                    <div class="bj-info" id="status-${i}" style="color:#fff;">${p.ready?'READY':''}</div>
-                    <div id="ctrl-${i}" style="margin-top:auto;"></div>
+                    <div id="ctrl-${i}" style="margin-top:auto; width:100%;"></div>
                 `;
                 c.appendChild(div);
-                
-                // Re-render cards if exists
                 const hc = div.querySelector(`#hand-${i}`);
                 if(p.hand) p.hand.forEach(cd => hc.appendChild(createCard(cd)));
+                
+                // ★READYボタンの表示 (自分 かつ 未Ready かつ ゲーム開始前/手札なし)
+                const me = (p.id === socket.id);
+                if(me && !p.ready && p.hand.length === 0) {
+                    const btn = document.createElement('button');
+                    btn.className = 'btn-ready'; btn.innerText = 'READY';
+                    btn.style.width = '100%'; btn.style.marginTop = '10px';
+                    btn.onclick = () => socket.emit('bjToggleReady', {room: roomID});
+                    div.querySelector(`#ctrl-${i}`).appendChild(btn);
+                }
             });
         }
 
         function createCard(c) {
-            const el = document.createElement('div');
-            el.className = `card ${['♥','♦'].includes(c.suit)?'red':''}`;
-            if(c.suit === '?') el.classList.add('back');
-            else el.innerText = c.rank + c.suit;
+            const el = document.createElement('div'); el.className = `card ${['♥','♦'].includes(c.suit)?'red':''}`;
+            if(c.suit === '?') el.classList.add('back'); else el.innerText = c.rank + c.suit;
             return el;
         }
-
-        function sendBet(amt) {
-            socket.emit('bjBet', { room: roomID, amount: amt });
-            document.getElementById('bet-ui').style.display = 'none';
-        }
+        function sendBet(amt) { socket.emit('bjBet', { room: roomID, amount: amt }); document.getElementById('bet-ui').style.display = 'none'; }
 
         socket.on('bjRoundStart', d => {
             document.getElementById('bj-round-info').innerText = `ROUND: ${d.round}/${d.maxRounds}`;
@@ -407,76 +394,41 @@
             logChat('SYS', `ROUND ${d.round} START`, null, true);
         });
 
-        socket.on('bjBetUpdate', d => {
-            // Simple re-render handled by bjUpdate mainly, but log it
-            // logChat('SYS', `Seat ${d.seatIndex} bet ${d.bet}`, null, true);
-        });
-
         socket.on('bjUpdate', d => {
             document.getElementById('bet-ui').style.display = 'none';
-            const dc = document.getElementById('d-cards');
-            dc.innerHTML = ''; d.dealerHand.forEach(c => dc.appendChild(createCard(c)));
-
+            const dc = document.getElementById('d-cards'); dc.innerHTML = ''; d.dealerHand.forEach(c => dc.appendChild(createCard(c)));
             d.players.forEach((p, i) => {
-                const hc = document.getElementById(`hand-${i}`);
-                if(hc) {
-                    hc.innerHTML = '';
-                    p.hand.forEach(c => hc.appendChild(createCard(c)));
-                }
-                const st = document.getElementById(`status-${i}`);
-                if(st) st.innerText = p.status === 'playing' ? '' : p.status;
-                
+                const hc = document.getElementById(`hand-${i}`); if(hc) { hc.innerHTML = ''; p.hand.forEach(c => hc.appendChild(createCard(c))); }
+                const st = document.getElementById(`status-${i}`); if(st) st.innerText = p.status === 'playing' ? '' : p.status;
                 const seat = document.getElementById(`seat-${i}`);
                 if(seat) {
-                    if(i === d.turnIndex && d.phase === 'playing') seat.classList.add('active');
-                    else seat.classList.remove('active');
-                    
-                    // Controls
-                    const ctrl = document.getElementById(`ctrl-${i}`);
-                    ctrl.innerHTML = '';
+                    if(i === d.turnIndex && d.phase === 'playing') seat.classList.add('active'); else seat.classList.remove('active');
+                    const ctrl = document.getElementById(`ctrl-${i}`); ctrl.innerHTML = '';
                     if(p.id === socket.id && i === d.turnIndex && d.phase === 'playing') {
-                        ctrl.innerHTML = `
-                            <button onclick="socket.emit('bjAction',{room:roomID,action:'hit'})">HIT</button>
-                            <button onclick="socket.emit('bjAction',{room:roomID,action:'stand'})">STAND</button>
-                        `;
+                        ctrl.innerHTML = `<div style="display:flex; gap:5px;"><button onclick="socket.emit('bjAction',{room:roomID,action:'hit'})">HIT</button><button onclick="socket.emit('bjAction',{room:roomID,action:'stand'})">STAY</button></div>`;
                     }
                 }
             });
         });
 
         socket.on('bjRoundOver', d => {
-            const dc = document.getElementById('d-cards');
-            dc.innerHTML = ''; d.dealerHand.forEach(c => dc.appendChild(createCard(c)));
-            
+            const dc = document.getElementById('d-cards'); dc.innerHTML = ''; d.dealerHand.forEach(c => dc.appendChild(createCard(c)));
             d.players.forEach((p, i) => {
                 const st = document.getElementById(`status-${i}`);
-                if(st) {
-                    st.innerText = p.result;
-                    st.style.color = p.result.includes('WIN') ? '#0f0' : (p.result.includes('LOSE') ? '#f00' : '#fff');
-                }
-                // Update HUD Score
-                const seat = document.getElementById(`seat-${i}`);
-                if(seat) seat.querySelector('.bj-score').innerText = `${p.score}PTS`;
+                if(st) { st.innerText = p.result; st.style.color = p.result.includes('WIN') ? '#0f0' : (p.result.includes('LOSE') ? '#f00' : '#fff'); }
+                const seat = document.getElementById(`seat-${i}`); if(seat) seat.querySelector('.bj-score').innerText = `${p.score}PTS`;
             });
-            
-            const txt = d.isMatchOver ? "MATCH COMPLETE" : "ROUND END";
-            document.getElementById('sys-msg-overlay').innerText = txt;
+            document.getElementById('sys-msg-overlay').innerText = d.isMatchOver ? "MATCH COMPLETE" : "ROUND END";
         });
 
-        // --- OTHELLO / C4 RENDERERS (Condensed) ---
+        // --- OTHELLO/C4 UTILS ---
         function updateTurn(turn) {
             const isP1 = (turn === 'black' || turn === 'red');
             document.getElementById('p1-lbl').className = isP1 ? 'p-label p-active' : 'p-label';
             document.getElementById('p2-lbl').className = !isP1 ? 'p-label p-active' : 'p-label';
-            
-            let c = 'white';
-            if(gameType === 'connect4') {
-                c = turn === 'red' ? 'var(--accent-red)' : 'var(--accent-cyan)';
-            }
-            document.getElementById('p1-lbl').style.color = isP1 ? c : '#666';
-            document.getElementById('p2-lbl').style.color = !isP1 ? c : '#666';
+            let c = 'white'; if(gameType === 'connect4') c = turn === 'red' ? 'var(--accent-red)' : 'var(--accent-cyan)';
+            document.getElementById('p1-lbl').style.color = isP1 ? c : '#666'; document.getElementById('p2-lbl').style.color = !isP1 ? c : '#666';
         }
-
         function renderOthello(b) {
             const bc = document.getElementById('board-container'); bc.innerHTML = '';
             const div = document.createElement('div'); div.className = 'othello-board';
@@ -485,36 +437,27 @@
                 c.onclick = () => socket.emit('othelloMove', {room:roomID, x, y, color:myColor});
                 if(b[y][x]) { const s=document.createElement('div'); s.className=`o-stone o-${b[y][x]} flipping`; c.appendChild(s); }
                 div.appendChild(c);
-            }
-            bc.appendChild(div);
+            } bc.appendChild(div);
         }
-
         function setupC4() {
             const bc = document.getElementById('board-container'); bc.innerHTML = '';
             const c4 = document.createElement('div'); c4.className = 'c4-board';
             const g = document.createElement('div'); g.className = 'c4-grid';
             for(let i=0;i<42;i++) g.appendChild(document.createElement('div')).className='c4-hole';
             c4.appendChild(g); bc.appendChild(c4);
-            
             c4.addEventListener('click', (e) => {
-                const r = c4.getBoundingClientRect();
-                const col = Math.floor((e.clientX - r.left - 15) / 70);
+                const r = c4.getBoundingClientRect(); const col = Math.floor((e.clientX - r.left - 15) / 70);
                 if(col >= 0 && col < 7) socket.emit('connect4Move', {room:roomID, col});
             });
         }
         socket.on('othelloUpdate', d => renderOthello(d.board));
         socket.on('connect4Update', d => {
-            const p = document.createElement('div');
-            p.className = `c4-piece c4-${d.color === 'red' ? 'red' : 'cyan'} falling`;
-            p.style.left = (15 + d.col * 70) + 'px';
-            p.style.top = (15 + d.row * 70) + 'px';
+            const p = document.createElement('div'); p.className = `c4-piece c4-${d.color === 'red' ? 'red' : 'cyan'} falling`;
+            p.style.left = (15 + d.col * 70) + 'px'; p.style.top = (15 + d.row * 70) + 'px';
             document.querySelector('.c4-board').appendChild(p);
         });
         socket.on('changeTurn', t => updateTurn(t));
-        socket.on('gameOver', d => {
-            alert(d.msg);
-            location.reload();
-        });
+        socket.on('gameOver', d => { alert(d.msg); location.reload(); });
         socket.on('error', m => alert(m));
 
     </script>

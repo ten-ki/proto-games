@@ -14,6 +14,7 @@ let rooms = {};
 const C4_ROWS = 6;
 const C4_COLS = 7;
 const INIT_POINTS = 30;
+const FIXED_ROUNDS = 7; // ★ラウンド数固定
 
 // --- CARD HELPERS ---
 const SUITS = ['♠', '♥', '♦', '♣'];
@@ -49,9 +50,11 @@ function getHandScore(hand) {
 io.on('connection', (socket) => {
     
     // --- CHAT SYSTEM ---
-    // ロビーチャット
-    socket.on('lobbyMsg', (d) => io.emit('lobbyMsg', d));
-    // ルームチャット
+    // ★ロビーチャット (全員)
+    socket.on('lobbyMsg', (d) => {
+        io.emit('lobbyMsg', { username: d.username || 'ANONYMOUS', text: d.text });
+    });
+    // ルームチャット (部屋内)
     socket.on('roomMsg', (d) => { 
         if(rooms[d.room]) io.to(d.room).emit('roomMsg', d); 
     });
@@ -70,7 +73,7 @@ io.on('connection', (socket) => {
                 dealerHand: [],
                 bjTurnIndex: 0,
                 bjPhase: 'lobby',
-                maxRounds: 5,
+                maxRounds: FIXED_ROUNDS, // ★固定
                 currentRound: 0
             };
         }
@@ -88,23 +91,33 @@ io.on('connection', (socket) => {
         };
         r.players.push(newPlayer);
         socket.join(room);
+        
+        // 自分に情報を送る
         socket.emit('joined', { color: newPlayer.color, gameType: actualGameType, mySeat: r.players.length - 1 });
-        io.to(room).emit('roomUpdate', { players: r.players, gameType: actualGameType });
+        
+        // 部屋全員に更新通知
+        io.to(room).emit('roomUpdate', { players: r.players, gameType: actualGameType, maxRounds: FIXED_ROUNDS });
 
-        // Board games auto-start
+        // 2人対戦ゲームは2人揃ったら自動開始
         if (actualGameType !== 'blackjack' && r.players.length === 2) startGame(room);
     });
 
     // --- BJ LOGIC ---
-    socket.on('bjVoteStart', ({ room, rounds }) => {
+    // ★READYボタン処理
+    socket.on('bjToggleReady', ({ room }) => {
         const r = rooms[room];
         if(!r || r.gameType !== 'blackjack' || r.gameActive) return;
+        
         const p = r.players.find(pl => pl.id === socket.id);
         if(p) {
             p.ready = !p.ready;
-            if(r.players.indexOf(p) === 0 && rounds) r.maxRounds = parseInt(rounds);
-            io.to(room).emit('roomUpdate', { players: r.players, gameType: 'blackjack', maxRounds: r.maxRounds });
-            if(r.players.length > 0 && r.players.every(pl => pl.ready)) startBjMatch(room);
+            // 状態更新を送信
+            io.to(room).emit('roomUpdate', { players: r.players, gameType: 'blackjack', maxRounds: FIXED_ROUNDS });
+            
+            // 全員Readyならスタート
+            if(r.players.length > 0 && r.players.every(pl => pl.ready)) {
+                startBjMatch(room);
+            }
         }
     });
 
@@ -138,7 +151,7 @@ io.on('connection', (socket) => {
         }
     });
 
-    // --- BOARD GAMES ---
+    // --- BOARD GAMES (Previous Logic) ---
     socket.on('othelloMove', ({ room, x, y, color }) => {
         const r = rooms[room];
         if (!r || !r.gameActive || r.turn !== color) return;
@@ -147,7 +160,6 @@ io.on('connection', (socket) => {
         r.board[y][x] = color;
         flipped.forEach(p => r.board[p.y][p.x] = color);
         io.to(room).emit('othelloUpdate', { board: r.board });
-        
         const opp = color === 'black' ? 'white' : 'black';
         if(canMove(r.board, opp)) { r.turn = opp; io.to(room).emit('changeTurn', opp); }
         else if(canMove(r.board, color)) { io.to(room).emit('passMessage', `${opp.toUpperCase()} PASS!`); io.to(room).emit('changeTurn', color); }
@@ -266,7 +278,7 @@ function updateBjState(room) {
     io.to(room).emit('bjUpdate', { players: r.players, dealerHand: visibleDealer, turnIndex: r.bjTurnIndex, phase: r.bjPhase });
 }
 
-// --- HELPERS ---
+// --- HELPERS (Othello/C4 Logic unchanged) ---
 function startGame(room) {
     const r = rooms[room];
     r.gameActive = true;
