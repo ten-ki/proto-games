@@ -9,9 +9,12 @@ const io = new Server(server);
 
 app.use(express.static(path.join(__dirname, 'public')));
 
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
 let rooms = {};
 
-const OTHELLO_SIZE = 8;
 const C4_ROWS = 6;
 const C4_COLS = 7;
 
@@ -30,13 +33,14 @@ io.on('connection', (socket) => {
         const r = rooms[room];
 
         if (r.players.length >= 2) {
-            socket.emit('error', 'FULL ROOM');
+            socket.emit('error', 'ROOM FULL (部屋が満員です)');
             return;
         }
 
-        const actualGameType = r.gameType;
+        const actualGameType = r.players.length === 0 ? gameType : r.gameType;
+        r.gameType = actualGameType;
+
         const isP1 = r.players.length === 0;
-        // P1: 黒/赤, P2: 白/シアン(青)
         const color = isP1 ? (actualGameType === 'othello' ? 'black' : 'red') 
                            : (actualGameType === 'othello' ? 'white' : 'cyan');
 
@@ -48,7 +52,7 @@ io.on('connection', (socket) => {
         if (r.players.length === 2) {
             startGame(room);
         } else {
-            socket.emit('waiting', 'WAITING FOR OPPONENT...');
+            socket.emit('waiting', 'OPPONENT SEARCHING... (対戦相手を待機中)');
         }
     });
 
@@ -63,7 +67,7 @@ io.on('connection', (socket) => {
         r.board[y][x] = color;
         flipped.forEach(p => r.board[p.y][p.x] = color);
 
-        io.to(room).emit('othelloUpdate', { board: r.board, lastMove: {x,y}, color });
+        io.to(room).emit('othelloUpdate', { board: r.board });
 
         const opponent = color === 'black' ? 'white' : 'black';
         const p1CanMove = canMove(r.board, opponent);
@@ -76,6 +80,7 @@ io.on('connection', (socket) => {
             io.to(room).emit('passMessage', `${opponent.toUpperCase()} PASS!`);
             io.to(room).emit('changeTurn', color);
         } else {
+            // --- GAME OVER (OTHELLO) ---
             const score = calcScore(r.board);
             let winner = 'draw';
             if (score.black > score.white) winner = 'black';
@@ -83,9 +88,12 @@ io.on('connection', (socket) => {
             
             io.to(room).emit('gameOver', { 
                 winner, 
-                msg: `FINISH! BLACK:${score.black} / WHITE:${score.white}`
+                msg: `GAME OVER! BLACK:${score.black} / WHITE:${score.white}`
             });
             r.gameActive = false;
+
+            // ★ 15秒後に部屋解体
+            scheduleRoomDestruction(room);
         }
     });
 
@@ -109,12 +117,21 @@ io.on('connection', (socket) => {
         r.board[targetRow][col] = player.color;
         io.to(room).emit('connect4Update', { row: targetRow, col, color: player.color });
 
-        if (checkConnect4Win(r.board, player.color)) {
-            io.to(room).emit('gameOver', { winner: player.color, msg: `${player.color.toUpperCase()} WINS!` });
+        // 勝利判定
+        const isWin = checkConnect4Win(r.board, player.color);
+        const isDraw = !isWin && r.board[0].every(c => c !== null);
+
+        if (isWin || isDraw) {
+            // --- GAME OVER (CONNECT 4) ---
+            const msg = isWin ? `${player.color.toUpperCase()} WINS!` : 'DRAW GAME';
+            const winner = isWin ? player.color : 'draw';
+            
+            io.to(room).emit('gameOver', { winner, msg });
             r.gameActive = false;
-        } else if (r.board[0].every(c => c !== null)) {
-            io.to(room).emit('gameOver', { winner: 'draw', msg: 'DRAW GAME' });
-            r.gameActive = false;
+
+            // ★ 15秒後に部屋解体
+            scheduleRoomDestruction(room);
+
         } else {
             r.turn = r.turn === 'red' ? 'cyan' : 'red';
             io.to(room).emit('changeTurn', r.turn);
@@ -122,9 +139,21 @@ io.on('connection', (socket) => {
     });
 
     socket.on('disconnect', () => {
-        // 簡易的な切断処理
+        // 切断時の処理（今回は簡易版のため省略）
     });
 });
+
+// ★ 部屋解体用のヘルパー関数
+function scheduleRoomDestruction(room) {
+    console.log(`Room ${room} will be dismantled in 15 seconds...`);
+    setTimeout(() => {
+        if (rooms[room]) {
+            io.to(room).emit('forceReset'); // クライアントを強制リロード
+            delete rooms[room]; // サーバーメモリから削除
+            console.log(`Room ${room} dismantled.`);
+        }
+    }, 15000); // 15000ms = 15秒
+}
 
 // --- Helpers ---
 function startGame(room) {
@@ -170,8 +199,6 @@ function getOthelloFlips(board, x, y, color) {
             else { temp = []; break; }
             cx+=dir[0]; cy+=dir[1];
         }
-        if(cx<0 || cx>=8 || cy<0 || cy>=8) temp = [];
-        flipped = flipped.concat(temp);
     });
     return flipped;
 }

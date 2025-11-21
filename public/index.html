@@ -6,26 +6,23 @@
     <title>NITA GAME HUB // SYSTEM</title>
     <script src="/socket.io/socket.io.js"></script>
     <style>
-        /* --- CYBERPUNK THEME V2 --- */
+        /* --- CYBERPUNK CORE THEME --- */
         :root {
             --bg: #050505;
-            --panel-bg: rgba(20, 20, 20, 0.7);
+            --panel-bg: rgba(20, 20, 20, 0.85);
             --text: #e0e0e0;
             
-            /* Othello Colors */
+            /* Colors */
             --othello-green: #00ff41;
-            --othello-border: #003300;
-
-            /* Connect 4 Colors (Neon) */
             --c4-red: #ff0055;
             --c4-cyan: #00eaff;
-            --c4-grid: rgba(255, 255, 255, 0.15);
+            --ring-color: rgba(255, 255, 255, 0.15);
         }
         
         body {
             background-color: var(--bg);
             color: var(--text);
-            font-family: 'Courier New', monospace; /* FONT RESTORED */
+            font-family: 'Courier New', monospace;
             margin: 0; height: 100vh;
             display: flex; flex-direction: column;
             align-items: center; justify-content: center;
@@ -36,164 +33,141 @@
             background-size: 30px 30px;
         }
 
-        /* Scanline Effect */
         body::after {
             content: " ";
             display: block; position: absolute; top: 0; left: 0; bottom: 0; right: 0;
-            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
-            z-index: 2; background-size: 100% 2px, 3px 100%; pointer-events: none;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%);
+            background-size: 100% 4px;
+            z-index: 2; pointer-events: none; opacity: 0.6;
         }
 
         h1 {
             font-size: 2.5rem; letter-spacing: 0.2em; margin-bottom: 20px;
-            text-shadow: 0 0 10px rgba(255,255,255,0.5);
-            animation: glitch 3s infinite;
+            text-shadow: 0 0 10px rgba(255,255,255,0.3);
+            z-index: 10;
         }
 
-        /* Login Screen */
+        /* --- UI ELEMENTS --- */
         #login-screen {
-            background: var(--panel-bg); padding: 50px;
-            border: 1px solid #333; box-shadow: 0 0 50px rgba(0,0,0,0.8);
-            backdrop-filter: blur(5px); border-radius: 4px;
-            display: flex; flex-direction: column; gap: 20px;
-            animation: fadeInUp 0.8s ease-out; z-index: 10;
+            background: var(--panel-bg); padding: 40px;
+            border: 1px solid #333; box-shadow: 0 0 30px rgba(0,0,0,0.8);
+            backdrop-filter: blur(4px); border-radius: 4px;
+            display: flex; flex-direction: column; gap: 15px;
+            z-index: 10;
         }
         
         input, select {
             background: #000; border: 1px solid #444; color: var(--text);
-            padding: 15px; font-family: inherit; font-size: 1rem; text-align: center;
-            outline: none; transition: 0.3s; width: 280px; letter-spacing: 0.1em;
+            padding: 12px; font-family: inherit; font-size: 1rem; text-align: center;
+            outline: none; width: 280px; letter-spacing: 0.1em;
+            text-transform: uppercase;
         }
-        input:focus, select:focus { border-color: var(--othello-green); box-shadow: 0 0 10px rgba(0, 255, 65, 0.3); }
+        input:focus, select:focus { border-color: var(--othello-green); box-shadow: 0 0 8px rgba(0, 255, 65, 0.3); }
 
         button {
             background: transparent; border: 1px solid var(--text); color: var(--text);
-            padding: 15px; font-family: inherit; font-weight: bold; cursor: pointer;
-            transition: 0.3s; letter-spacing: 0.2em;
+            padding: 12px; font-family: inherit; font-weight: bold; cursor: pointer;
+            transition: 0.2s; letter-spacing: 0.2em; text-transform: uppercase;
         }
         button:hover {
             background: var(--text); color: var(--bg);
-            box-shadow: 0 0 20px var(--text);
+            box-shadow: 0 0 15px var(--text);
         }
 
-        /* Game Screen */
         #game-screen { display: none; flex-direction: column; align-items: center; z-index: 10; }
         
         .info-panel {
-            display: flex; gap: 50px; margin-bottom: 30px;
+            display: flex; gap: 50px; margin-bottom: 20px;
             font-size: 1.2rem; text-transform: uppercase;
         }
         .player-label {
             padding: 5px 10px; border-bottom: 2px solid transparent;
-            opacity: 0.4; transition: 0.3s; letter-spacing: 0.1em;
+            opacity: 0.4; transition: 0.3s;
         }
-        .active-turn { opacity: 1; border-color: currentColor; text-shadow: 0 0 15px currentColor; transform: scale(1.1); }
+        .active-turn { opacity: 1; transform: scale(1.1); text-shadow: 0 0 10px currentColor; border-color: currentColor; }
 
-        /* --- OTHELLO DESIGN --- */
+        /* --- OTHELLO --- */
         .othello-board {
             display: grid; grid-template-columns: repeat(8, 50px); gap: 2px;
             background: #111; border: 2px solid #333; padding: 5px;
-            box-shadow: 0 0 40px rgba(0,0,0,0.8);
+            box-shadow: 0 0 40px rgba(0,0,0,0.5);
         }
         .o-cell {
-            width: 50px; height: 50px;
-            background: #082808; /* Dark Cyber Green */
-            border: 1px solid #0f3f0f;
+            width: 50px; height: 50px; background: #0a1f0a; border: 1px solid #143314;
             display: flex; align-items: center; justify-content: center; cursor: pointer;
-            position: relative;
         }
-        .o-cell:hover { background: #0f3f0f; box-shadow: inset 0 0 10px var(--othello-green); }
-        
-        /* Guide dot for valid moves */
-        .o-valid::after {
-            content: ''; width: 8px; height: 8px; background: rgba(0, 255, 65, 0.3);
-            border-radius: 50%; pointer-events: none;
-        }
+        .o-cell:hover { background: #143314; }
 
         .o-stone {
             width: 40px; height: 40px; border-radius: 50%;
-            transition: transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-            transform-style: preserve-3d;
+            transition: transform 0.5s;
         }
-        .o-black {
-            background: #111; border: 1px solid #444;
-            box-shadow: 0 0 5px rgba(255,255,255,0.1); /* Subtle glow for visibility */
+        .o-black { 
+            background: #111; 
+            box-shadow: inset 3px 3px 5px rgba(255,255,255,0.3), 0 0 5px #000;
+            border: 1px solid #333; 
         }
-        .o-white {
-            background: #eee; box-shadow: 0 0 15px rgba(255,255,255,0.6);
-        }
-        .flipping { transform: rotateY(180deg); }
+        .o-white { background: #eee; box-shadow: 0 0 10px #fff; }
+        .flipping { animation: flipAnim 0.5s ease-in-out; }
+        @keyframes flipAnim { 0% { transform: rotateY(0); } 50% { transform: rotateY(90deg); } 100% { transform: rotateY(0); } }
 
 
-        /* --- CONNECT 4 / GRAVITY DESIGN (Revised) --- */
-        /* Transparent glass look, no black circles blocking view */
+        /* --- GRAVITY (CONNECT 4) --- */
         .c4-container {
             position: relative; padding: 20px;
-            border: 2px solid #444; border-radius: 12px;
-            background: rgba(255, 255, 255, 0.02); /* Glassy */
+            border: 2px solid #444; border-radius: 15px;
+            background: rgba(255, 255, 255, 0.03);
             box-shadow: 0 0 30px rgba(0,0,0,0.5);
             cursor: pointer;
         }
-        
-        .c4-board {
+
+        .c4-grid-layer {
             display: grid; grid-template-columns: repeat(7, 60px); gap: 10px;
-            /* No background color, just grid */
+            position: relative; z-index: 10; pointer-events: none;
         }
 
-        /* The "Hole" is now just a ring */
-        .c4-cell {
+        .c4-ring {
             width: 60px; height: 60px;
-            border: 2px solid var(--c4-grid); /* Ring only */
+            border: 3px solid var(--ring-color);
             border-radius: 50%;
-            position: relative; z-index: 10; /* In front of pieces */
-            pointer-events: none; /* Let clicks pass through */
+            box-shadow: inset 0 0 5px rgba(0,0,0,0.5);
         }
 
-        /* Pieces sit BEHIND the rings */
         .c4-piece {
-            width: 60px; height: 60px; border-radius: 50%;
-            position: absolute; top: 0; left: 0; z-index: 1; /* Behind grid */
-            transform: scale(0.85); /* Slightly smaller than hole */
+            position: absolute; width: 60px; height: 60px; border-radius: 50%;
+            z-index: 5; transform: scale(0.9);
         }
-        
-        .c4-red {
-            background: var(--c4-red);
-            box-shadow: 0 0 20px var(--c4-red), inset 0 0 10px rgba(255,255,255,0.5);
-        }
-        .c4-cyan {
-            background: var(--c4-cyan);
-            box-shadow: 0 0 20px var(--c4-cyan), inset 0 0 10px rgba(255,255,255,0.5);
-        }
+
+        .c4-red { background: var(--c4-red); box-shadow: 0 0 15px var(--c4-red), inset 0 0 10px rgba(255,255,255,0.5); }
+        .c4-cyan { background: var(--c4-cyan); box-shadow: 0 0 15px var(--c4-cyan), inset 0 0 10px rgba(255,255,255,0.5); }
 
         .falling { animation: dropBounce 0.6s cubic-bezier(0.5, 0.05, 0.1, 0.3) forwards; }
         @keyframes dropBounce {
-            0% { transform: translateY(-400px) scale(0.85); opacity: 0; }
-            60% { transform: translateY(0) scale(0.85); opacity: 1; }
-            80% { transform: translateY(-20px) scale(0.85); }
-            100% { transform: translateY(0) scale(0.85); }
+            0% { transform: translateY(-400px) scale(0.9); opacity: 0; }
+            60% { transform: translateY(0) scale(0.9); opacity: 1; }
+            80% { transform: translateY(-15px) scale(0.9); }
+            100% { transform: translateY(0) scale(0.9); }
         }
 
-        /* Guide piece on hover */
         .c4-guide {
-            position: absolute; top: -60px; width: 60px; height: 60px;
-            border-radius: 50%; border: 2px dashed #fff;
-            transition: left 0.1s; opacity: 0; pointer-events: none;
-            box-shadow: 0 0 10px #fff;
+            position: absolute; top: -50px; 
+            width: 60px; height: 60px; border-radius: 50%;
+            border: 2px dashed #fff; opacity: 0; 
+            transition: left 0.1s, opacity 0.2s;
+            pointer-events: none; z-index: 20;
         }
 
         #message {
-            margin-top: 30px; font-size: 1.5rem; letter-spacing: 0.1em;
-            text-shadow: 0 0 10px currentColor; min-height: 30px;
+            margin-top: 25px; font-size: 1.5rem; letter-spacing: 0.1em;
+            text-shadow: 0 0 10px currentColor; min-height: 1.5em;
         }
-
-        /* Animations */
-        @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-        @keyframes glitch {
-            0% { text-shadow: 2px 2px 0px #ff0055, -2px -2px 0px #00eaff; }
-            2% { text-shadow: -2px 2px 0px #ff0055, 2px -2px 0px #00eaff; }
-            4% { text-shadow: 0 0 10px rgba(255,255,255,0.5); }
-            100% { text-shadow: 0 0 10px rgba(255,255,255,0.5); }
+        
+        /* Countdown style */
+        .system-msg {
+            font-size: 1rem; color: #ff0055; margin-top: 10px; 
+            animation: blink 1s infinite;
         }
+        @keyframes blink { 50% { opacity: 0.5; } }
 
     </style>
 </head>
@@ -202,14 +176,14 @@
     <h1>NITA GAME HUB</h1>
 
     <div id="login-screen">
-        <p style="font-size:0.8rem; opacity:0.6; text-align:center;">// SYSTEM ACCESS</p>
-        <input type="text" id="username" placeholder="CODENAME" maxlength="10">
+        <div style="text-align:center; font-size:0.8rem; color:#666;">// SYSTEM LOGIN</div>
+        <input type="text" id="username" placeholder="CODENAME (NAME)" maxlength="10">
         <input type="text" id="room" placeholder="FREQUENCY (ROOM ID)">
         <select id="gameType">
             <option value="othello">TACTICS (OTHELLO)</option>
             <option value="connect4">GRAVITY (CONNECT 4)</option>
         </select>
-        <button onclick="joinGame()">INITIALIZE</button>
+        <button onclick="joinGame()">INITIALIZE LINK</button>
     </div>
 
     <div id="game-screen">
@@ -220,17 +194,19 @@
 
         <div id="board-area"></div>
         <div id="message"></div>
-        <button id="restart-btn" style="display:none; margin-top:20px;" onclick="location.reload()">REBOOT SYSTEM</button>
+        <!-- Countdown Message Area -->
+        <div id="system-status" class="system-msg"></div>
     </div>
 
     <script>
         const socket = io();
         let myColor = null;
         let myTurn = false;
-        let currentGameType = '';
         let roomID = '';
+        let currentGameType = '';
         const boardArea = document.getElementById('board-area');
         const msgEl = document.getElementById('message');
+        const sysEl = document.getElementById('system-status');
 
         function joinGame() {
             const username = document.getElementById('username').value;
@@ -248,7 +224,7 @@
         socket.on('waiting', (msg) => {
             document.getElementById('login-screen').style.display = 'none';
             document.getElementById('game-screen').style.display = 'flex';
-            boardArea.innerHTML = `<div style="padding:50px; border:1px dashed #555; color:#888;">${msg}</div>`;
+            boardArea.innerHTML = `<div style="padding:40px; border:1px dashed #444; color:#666;">${msg}</div>`;
             msgEl.innerText = "";
         });
 
@@ -258,42 +234,60 @@
             document.getElementById('p1-info').innerText = p1;
             document.getElementById('p2-info').innerText = p2;
             currentGameType = gameType;
+            sysEl.innerText = ""; // Clear system msg
 
             if(gameType === 'othello') renderOthello(board);
             else setupConnect4();
+            
             updateTurn(turn);
         });
 
         socket.on('othelloUpdate', ({ board }) => renderOthello(board));
-        socket.on('passMessage', (txt) => alert(txt));
         socket.on('changeTurn', (turn) => updateTurn(turn));
+        socket.on('passMessage', (txt) => alert(txt));
         
         socket.on('gameOver', ({ winner, msg }) => {
             myTurn = false;
             msgEl.innerText = msg;
-            msgEl.style.color = winner===myColor ? '#00ff41' : '#ff0055';
-            if(winner === 'draw') msgEl.style.color = '#fff';
-            document.getElementById('restart-btn').style.display = 'block';
+            if(winner === 'draw') {
+                msgEl.style.color = '#fff';
+            } else {
+                msgEl.style.color = (winner === myColor) ? '#00ff41' : '#ff0055';
+            }
+
+            // --- COUNTDOWN LOGIC ---
+            let countdown = 15;
+            sysEl.style.color = "#ff0055";
+            const interval = setInterval(() => {
+                sysEl.innerText = `// SYSTEM PURGE IN ${countdown} SECONDS...`;
+                countdown--;
+                if(countdown < 0) clearInterval(interval);
+            }, 1000);
         });
 
+        // ★ Server forces a reset
+        socket.on('forceReset', () => {
+            location.reload();
+        });
+        
+        socket.on('connect4Update', ({ row, col, color }) => dropPiece(row, col, color));
         socket.on('error', (msg) => alert(msg));
 
-        // --- Functions ---
+        // --- UI Logic ---
         function updateTurn(turn) {
             const isP1 = (turn === 'black' || turn === 'red');
             const p1Label = document.getElementById('p1-info');
             const p2Label = document.getElementById('p2-info');
             
-            p1Label.classList.toggle('active-turn', isP1);
-            p2Label.classList.toggle('active-turn', !isP1);
+            p1Label.className = 'player-label' + (isP1 ? ' active-turn' : '');
+            p2Label.className = 'player-label' + (!isP1 ? ' active-turn' : '');
 
-            // Colorize names based on game type
             if(currentGameType === 'othello') {
-                p1Label.style.color = isP1 ? '#fff' : '#555'; // Black is white text for visibility
-                p2Label.style.color = !isP1 ? '#fff' : '#555';
+                p1Label.style.color = isP1 ? '#eee' : '#666';
+                p2Label.style.color = !isP1 ? '#eee' : '#666';
             } else {
-                p1Label.style.color = isP1 ? 'var(--c4-red)' : '#555';
-                p2Label.style.color = !isP1 ? 'var(--c4-cyan)' : '#555';
+                p1Label.style.color = isP1 ? 'var(--c4-red)' : '#666';
+                p2Label.style.color = !isP1 ? 'var(--c4-cyan)' : '#666';
             }
 
             myTurn = (turn === myColor);
@@ -301,25 +295,20 @@
             msgEl.style.color = myTurn ? "#fff" : "#666";
         }
 
-        // --- OTHELLO RENDER ---
         function renderOthello(boardData) {
             boardArea.innerHTML = '';
             const board = document.createElement('div');
             board.className = 'othello-board';
-
             for(let y=0; y<8; y++) {
                 for(let x=0; x<8; x++) {
                     const cell = document.createElement('div');
                     cell.className = 'o-cell';
-                    // Optional: Highlight valid moves could go here
                     cell.onclick = () => { if(myTurn) socket.emit('othelloMove', { room: roomID, x, y, color: myColor }); };
-                    
                     const val = boardData[y][x];
                     if(val) {
                         const stone = document.createElement('div');
-                        stone.className = `o-stone o-${val} flipping`; // add anim class
+                        stone.className = `o-stone o-${val} flipping`;
                         cell.appendChild(stone);
-                        // remove anim class after play (optional logic simplified here)
                     }
                     board.appendChild(cell);
                 }
@@ -327,50 +316,42 @@
             boardArea.appendChild(board);
         }
 
-        // --- CONNECT 4 RENDER ---
+        let c4Container = null;
         function setupConnect4() {
             boardArea.innerHTML = '';
-            const container = document.createElement('div');
-            container.className = 'c4-container';
-            
+            c4Container = document.createElement('div');
+            c4Container.className = 'c4-container';
             const guide = document.createElement('div');
             guide.className = 'c4-guide';
-            container.appendChild(guide);
-
-            const board = document.createElement('div');
-            board.className = 'c4-board';
-
-            // Just rings
+            c4Container.appendChild(guide);
+            const gridLayer = document.createElement('div');
+            gridLayer.className = 'c4-grid-layer';
             for(let i=0; i<42; i++) {
-                const cell = document.createElement('div');
-                cell.className = 'c4-cell';
-                board.appendChild(cell);
+                const ring = document.createElement('div');
+                ring.className = 'c4-ring';
+                gridLayer.appendChild(ring);
             }
-            container.appendChild(board);
-            boardArea.appendChild(container);
-
-            // Logic for click
-            const COL_WIDTH = 70; // 60px cell + 10px gap
+            c4Container.appendChild(gridLayer);
+            boardArea.appendChild(c4Container);
+            const COL_WIDTH = 70; 
             const PADDING = 20;
-
-            container.addEventListener('mousemove', (e) => {
+            c4Container.addEventListener('mousemove', (e) => {
                 if(!myTurn) { guide.style.opacity=0; return; }
-                const rect = container.getBoundingClientRect();
+                const rect = c4Container.getBoundingClientRect();
                 const x = e.clientX - rect.left;
                 let col = Math.floor((x - PADDING) / COL_WIDTH);
-                if(col<0) col=0; if(col>6) col=6;
-                
+                if(col < 0) col = 0; if(col > 6) col = 6;
                 guide.style.opacity = 1;
-                guide.style.borderColor = myColor==='red'?'var(--c4-red)':'var(--c4-cyan)';
-                guide.style.boxShadow = `0 0 10px ${myColor==='red'?'var(--c4-red)':'var(--c4-cyan)'}`;
                 guide.style.left = (PADDING + col * COL_WIDTH) + 'px';
-                container.dataset.col = col;
+                const colorVar = myColor === 'red' ? 'var(--c4-red)' : 'var(--c4-cyan)';
+                guide.style.borderColor = colorVar;
+                guide.style.boxShadow = `0 0 10px ${colorVar}`;
+                c4Container.dataset.targetCol = col;
             });
-
-            container.addEventListener('mouseleave', () => guide.style.opacity=0);
-            container.addEventListener('click', () => {
+            c4Container.addEventListener('mouseleave', () => guide.style.opacity = 0);
+            c4Container.addEventListener('click', () => {
                 if(!myTurn) return;
-                const col = container.dataset.col;
+                const col = c4Container.dataset.targetCol;
                 if(col !== undefined) {
                     socket.emit('connect4Move', { room: roomID, col: parseInt(col) });
                     myTurn = false;
@@ -379,20 +360,15 @@
             });
         }
 
-        socket.on('connect4Update', ({ row, col, color }) => {
-            const container = document.querySelector('.c4-container');
+        function dropPiece(row, col, color) {
+            if(!c4Container) return;
             const piece = document.createElement('div');
-            const cClass = color === 'red' ? 'c4-red' : 'c4-cyan';
-            piece.className = `c4-piece ${cClass} falling`;
-            
-            const COL_WIDTH = 70;
-            const PADDING = 20;
-            
-            piece.style.top = (PADDING + row * 70) + 'px';
+            piece.className = `c4-piece ${color === 'red' ? 'c4-red' : 'c4-cyan'} falling`;
+            const COL_WIDTH = 70; const ROW_HEIGHT = 70; const PADDING = 20;
             piece.style.left = (PADDING + col * COL_WIDTH) + 'px';
-            
-            container.appendChild(piece);
-        });
+            piece.style.top = (PADDING + row * ROW_HEIGHT) + 'px';
+            c4Container.appendChild(piece);
+        }
     </script>
 </body>
 </html>
