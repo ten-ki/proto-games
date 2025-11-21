@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NITA GAME HUB // SYSTEM</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        /* --- CYBERPUNK THEME V2 --- */
+        :root {
+            --bg: #050505;
+            --panel-bg: rgba(20, 20, 20, 0.7);
+            --text: #e0e0e0;
+            
+            /* Othello Colors */
+            --othello-green: #00ff41;
+            --othello-border: #003300;
+
+            /* Connect 4 Colors (Neon) */
+            --c4-red: #ff0055;
+            --c4-cyan: #00eaff;
+            --c4-grid: rgba(255, 255, 255, 0.15);
+        }
+        
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: 'Courier New', monospace; /* FONT RESTORED */
+            margin: 0; height: 100vh;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            overflow: hidden;
+            background-image: 
+                linear-gradient(rgba(0, 255, 65, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 255, 65, 0.03) 1px, transparent 1px);
+            background-size: 30px 30px;
+        }
+
+        /* Scanline Effect */
+        body::after {
+            content: " ";
+            display: block; position: absolute; top: 0; left: 0; bottom: 0; right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            z-index: 2; background-size: 100% 2px, 3px 100%; pointer-events: none;
+        }
+
+        h1 {
+            font-size: 2.5rem; letter-spacing: 0.2em; margin-bottom: 20px;
+            text-shadow: 0 0 10px rgba(255,255,255,0.5);
+            animation: glitch 3s infinite;
+        }
+
+        /* Login Screen */
+        #login-screen {
+            background: var(--panel-bg); padding: 50px;
+            border: 1px solid #333; box-shadow: 0 0 50px rgba(0,0,0,0.8);
+            backdrop-filter: blur(5px); border-radius: 4px;
+            display: flex; flex-direction: column; gap: 20px;
+            animation: fadeInUp 0.8s ease-out; z-index: 10;
+        }
+        
+        input, select {
+            background: #000; border: 1px solid #444; color: var(--text);
+            padding: 15px; font-family: inherit; font-size: 1rem; text-align: center;
+            outline: none; transition: 0.3s; width: 280px; letter-spacing: 0.1em;
+        }
+        input:focus, select:focus { border-color: var(--othello-green); box-shadow: 0 0 10px rgba(0, 255, 65, 0.3); }
+
+        button {
+            background: transparent; border: 1px solid var(--text); color: var(--text);
+            padding: 15px; font-family: inherit; font-weight: bold; cursor: pointer;
+            transition: 0.3s; letter-spacing: 0.2em;
+        }
+        button:hover {
+            background: var(--text); color: var(--bg);
+            box-shadow: 0 0 20px var(--text);
+        }
+
+        /* Game Screen */
+        #game-screen { display: none; flex-direction: column; align-items: center; z-index: 10; }
+        
+        .info-panel {
+            display: flex; gap: 50px; margin-bottom: 30px;
+            font-size: 1.2rem; text-transform: uppercase;
+        }
+        .player-label {
+            padding: 5px 10px; border-bottom: 2px solid transparent;
+            opacity: 0.4; transition: 0.3s; letter-spacing: 0.1em;
+        }
+        .active-turn { opacity: 1; border-color: currentColor; text-shadow: 0 0 15px currentColor; transform: scale(1.1); }
+
+        /* --- OTHELLO DESIGN --- */
+        .othello-board {
+            display: grid; grid-template-columns: repeat(8, 50px); gap: 2px;
+            background: #111; border: 2px solid #333; padding: 5px;
+            box-shadow: 0 0 40px rgba(0,0,0,0.8);
+        }
+        .o-cell {
+            width: 50px; height: 50px;
+            background: #082808; /* Dark Cyber Green */
+            border: 1px solid #0f3f0f;
+            display: flex; align-items: center; justify-content: center; cursor: pointer;
+            position: relative;
+        }
+        .o-cell:hover { background: #0f3f0f; box-shadow: inset 0 0 10px var(--othello-green); }
+        
+        /* Guide dot for valid moves */
+        .o-valid::after {
+            content: ''; width: 8px; height: 8px; background: rgba(0, 255, 65, 0.3);
+            border-radius: 50%; pointer-events: none;
+        }
+
+        .o-stone {
+            width: 40px; height: 40px; border-radius: 50%;
+            transition: transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            transform-style: preserve-3d;
+        }
+        .o-black {
+            background: #111; border: 1px solid #444;
+            box-shadow: 0 0 5px rgba(255,255,255,0.1); /* Subtle glow for visibility */
+        }
+        .o-white {
+            background: #eee; box-shadow: 0 0 15px rgba(255,255,255,0.6);
+        }
+        .flipping { transform: rotateY(180deg); }
+
+
+        /* --- CONNECT 4 / GRAVITY DESIGN (Revised) --- */
+        /* Transparent glass look, no black circles blocking view */
+        .c4-container {
+            position: relative; padding: 20px;
+            border: 2px solid #444; border-radius: 12px;
+            background: rgba(255, 255, 255, 0.02); /* Glassy */
+            box-shadow: 0 0 30px rgba(0,0,0,0.5);
+            cursor: pointer;
+        }
+        
+        .c4-board {
+            display: grid; grid-template-columns: repeat(7, 60px); gap: 10px;
+            /* No background color, just grid */
+        }
+
+        /* The "Hole" is now just a ring */
+        .c4-cell {
+            width: 60px; height: 60px;
+            border: 2px solid var(--c4-grid); /* Ring only */
+            border-radius: 50%;
+            position: relative; z-index: 10; /* In front of pieces */
+            pointer-events: none; /* Let clicks pass through */
+        }
+
+        /* Pieces sit BEHIND the rings */
+        .c4-piece {
+            width: 60px; height: 60px; border-radius: 50%;
+            position: absolute; top: 0; left: 0; z-index: 1; /* Behind grid */
+            transform: scale(0.85); /* Slightly smaller than hole */
+        }
+        
+        .c4-red {
+            background: var(--c4-red);
+            box-shadow: 0 0 20px var(--c4-red), inset 0 0 10px rgba(255,255,255,0.5);
+        }
+        .c4-cyan {
+            background: var(--c4-cyan);
+            box-shadow: 0 0 20px var(--c4-cyan), inset 0 0 10px rgba(255,255,255,0.5);
+        }
+
+        .falling { animation: dropBounce 0.6s cubic-bezier(0.5, 0.05, 0.1, 0.3) forwards; }
+        @keyframes dropBounce {
+            0% { transform: translateY(-400px) scale(0.85); opacity: 0; }
+            60% { transform: translateY(0) scale(0.85); opacity: 1; }
+            80% { transform: translateY(-20px) scale(0.85); }
+            100% { transform: translateY(0) scale(0.85); }
+        }
+
+        /* Guide piece on hover */
+        .c4-guide {
+            position: absolute; top: -60px; width: 60px; height: 60px;
+            border-radius: 50%; border: 2px dashed #fff;
+            transition: left 0.1s; opacity: 0; pointer-events: none;
+            box-shadow: 0 0 10px #fff;
+        }
+
+        #message {
+            margin-top: 30px; font-size: 1.5rem; letter-spacing: 0.1em;
+            text-shadow: 0 0 10px currentColor; min-height: 30px;
+        }
+
+        /* Animations */
+        @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes glitch {
+            0% { text-shadow: 2px 2px 0px #ff0055, -2px -2px 0px #00eaff; }
+            2% { text-shadow: -2px 2px 0px #ff0055, 2px -2px 0px #00eaff; }
+            4% { text-shadow: 0 0 10px rgba(255,255,255,0.5); }
+            100% { text-shadow: 0 0 10px rgba(255,255,255,0.5); }
+        }
+
+    </style>
+</head>
+<body>
+
+    <h1>NITA GAME HUB</h1>
+
+    <div id="login-screen">
+        <p style="font-size:0.8rem; opacity:0.6; text-align:center;">// SYSTEM ACCESS</p>
+        <input type="text" id="username" placeholder="CODENAME" maxlength="10">
+        <input type="text" id="room" placeholder="FREQUENCY (ROOM ID)">
+        <select id="gameType">
+            <option value="othello">TACTICS (OTHELLO)</option>
+            <option value="connect4">GRAVITY (CONNECT 4)</option>
+        </select>
+        <button onclick="joinGame()">INITIALIZE</button>
+    </div>
+
+    <div id="game-screen">
+        <div class="info-panel">
+            <div id="p1-info" class="player-label">P1</div>
+            <div id="p2-info" class="player-label">P2</div>
+        </div>
+
+        <div id="board-area"></div>
+        <div id="message"></div>
+        <button id="restart-btn" style="display:none; margin-top:20px;" onclick="location.reload()">REBOOT SYSTEM</button>
+    </div>
+
+    <script>
+        const socket = io();
+        let myColor = null;
+        let myTurn = false;
+        let currentGameType = '';
+        let roomID = '';
+        const boardArea = document.getElementById('board-area');
+        const msgEl = document.getElementById('message');
+
+        function joinGame() {
+            const username = document.getElementById('username').value;
+            roomID = document.getElementById('room').value;
+            const gameType = document.getElementById('gameType').value;
+            if(!username || !roomID) return alert("MISSING CREDENTIALS");
+            socket.emit('joinRoom', { username, room: roomID, gameType });
+        }
+
+        socket.on('joined', (data) => {
+            myColor = data.color;
+            currentGameType = data.gameType;
+        });
+
+        socket.on('waiting', (msg) => {
+            document.getElementById('login-screen').style.display = 'none';
+            document.getElementById('game-screen').style.display = 'flex';
+            boardArea.innerHTML = `<div style="padding:50px; border:1px dashed #555; color:#888;">${msg}</div>`;
+            msgEl.innerText = "";
+        });
+
+        socket.on('gameStart', ({ p1, p2, gameType, turn, board }) => {
+            document.getElementById('login-screen').style.display = 'none';
+            document.getElementById('game-screen').style.display = 'flex';
+            document.getElementById('p1-info').innerText = p1;
+            document.getElementById('p2-info').innerText = p2;
+            currentGameType = gameType;
+
+            if(gameType === 'othello') renderOthello(board);
+            else setupConnect4();
+            updateTurn(turn);
+        });
+
+        socket.on('othelloUpdate', ({ board }) => renderOthello(board));
+        socket.on('passMessage', (txt) => alert(txt));
+        socket.on('changeTurn', (turn) => updateTurn(turn));
+        
+        socket.on('gameOver', ({ winner, msg }) => {
+            myTurn = false;
+            msgEl.innerText = msg;
+            msgEl.style.color = winner===myColor ? '#00ff41' : '#ff0055';
+            if(winner === 'draw') msgEl.style.color = '#fff';
+            document.getElementById('restart-btn').style.display = 'block';
+        });
+
+        socket.on('error', (msg) => alert(msg));
+
+        // --- Functions ---
+        function updateTurn(turn) {
+            const isP1 = (turn === 'black' || turn === 'red');
+            const p1Label = document.getElementById('p1-info');
+            const p2Label = document.getElementById('p2-info');
+            
+            p1Label.classList.toggle('active-turn', isP1);
+            p2Label.classList.toggle('active-turn', !isP1);
+
+            // Colorize names based on game type
+            if(currentGameType === 'othello') {
+                p1Label.style.color = isP1 ? '#fff' : '#555'; // Black is white text for visibility
+                p2Label.style.color = !isP1 ? '#fff' : '#555';
+            } else {
+                p1Label.style.color = isP1 ? 'var(--c4-red)' : '#555';
+                p2Label.style.color = !isP1 ? 'var(--c4-cyan)' : '#555';
+            }
+
+            myTurn = (turn === myColor);
+            msgEl.innerText = myTurn ? ">> YOUR TURN <<" : "WAITING FOR OPPONENT...";
+            msgEl.style.color = myTurn ? "#fff" : "#666";
+        }
+
+        // --- OTHELLO RENDER ---
+        function renderOthello(boardData) {
+            boardArea.innerHTML = '';
+            const board = document.createElement('div');
+            board.className = 'othello-board';
+
+            for(let y=0; y<8; y++) {
+                for(let x=0; x<8; x++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'o-cell';
+                    // Optional: Highlight valid moves could go here
+                    cell.onclick = () => { if(myTurn) socket.emit('othelloMove', { room: roomID, x, y, color: myColor }); };
+                    
+                    const val = boardData[y][x];
+                    if(val) {
+                        const stone = document.createElement('div');
+                        stone.className = `o-stone o-${val} flipping`; // add anim class
+                        cell.appendChild(stone);
+                        // remove anim class after play (optional logic simplified here)
+                    }
+                    board.appendChild(cell);
+                }
+            }
+            boardArea.appendChild(board);
+        }
+
+        // --- CONNECT 4 RENDER ---
+        function setupConnect4() {
+            boardArea.innerHTML = '';
+            const container = document.createElement('div');
+            container.className = 'c4-container';
+            
+            const guide = document.createElement('div');
+            guide.className = 'c4-guide';
+            container.appendChild(guide);
+
+            const board = document.createElement('div');
+            board.className = 'c4-board';
+
+            // Just rings
+            for(let i=0; i<42; i++) {
+                const cell = document.createElement('div');
+                cell.className = 'c4-cell';
+                board.appendChild(cell);
+            }
+            container.appendChild(board);
+            boardArea.appendChild(container);
+
+            // Logic for click
+            const COL_WIDTH = 70; // 60px cell + 10px gap
+            const PADDING = 20;
+
+            container.addEventListener('mousemove', (e) => {
+                if(!myTurn) { guide.style.opacity=0; return; }
+                const rect = container.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                let col = Math.floor((x - PADDING) / COL_WIDTH);
+                if(col<0) col=0; if(col>6) col=6;
+                
+                guide.style.opacity = 1;
+                guide.style.borderColor = myColor==='red'?'var(--c4-red)':'var(--c4-cyan)';
+                guide.style.boxShadow = `0 0 10px ${myColor==='red'?'var(--c4-red)':'var(--c4-cyan)'}`;
+                guide.style.left = (PADDING + col * COL_WIDTH) + 'px';
+                container.dataset.col = col;
+            });
+
+            container.addEventListener('mouseleave', () => guide.style.opacity=0);
+            container.addEventListener('click', () => {
+                if(!myTurn) return;
+                const col = container.dataset.col;
+                if(col !== undefined) {
+                    socket.emit('connect4Move', { room: roomID, col: parseInt(col) });
+                    myTurn = false;
+                    guide.style.opacity = 0;
+                }
+            });
+        }
+
+        socket.on('connect4Update', ({ row, col, color }) => {
+            const container = document.querySelector('.c4-container');
+            const piece = document.createElement('div');
+            const cClass = color === 'red' ? 'c4-red' : 'c4-cyan';
+            piece.className = `c4-piece ${cClass} falling`;
+            
+            const COL_WIDTH = 70;
+            const PADDING = 20;
+            
+            piece.style.top = (PADDING + row * 70) + 'px';
+            piece.style.left = (PADDING + col * COL_WIDTH) + 'px';
+            
+            container.appendChild(piece);
+        });
+    </script>
+</body>
+</html>
