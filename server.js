@@ -12,8 +12,8 @@ app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.ht
 
 // --- DATA STORAGE ---
 let rooms = {};
-let globalChatLogs = []; // グローバルチャットの履歴
-const LOG_RETENTION_MS = 60 * 60 * 1000; // 1時間
+let globalChatLogs = []; // グローバルチャット履歴
+const LOG_RETENTION_MS = 60 * 60 * 1000; // 1時間保持
 
 // --- BJ CONSTANTS ---
 const INIT_POINTS = 30;
@@ -49,14 +49,10 @@ function getHandScore(hand) {
     return score;
 }
 
-// 1時間以上前のログを削除する定期処理 (1分ごとに実行)
+// ログ定期削除
 setInterval(() => {
     const cutoff = Date.now() - LOG_RETENTION_MS;
-    
-    // Global logs clean
     globalChatLogs = globalChatLogs.filter(log => log.timestamp > cutoff);
-
-    // Room logs clean
     for(let roomId in rooms) {
         if(rooms[roomId].chatLogs) {
             rooms[roomId].chatLogs = rooms[roomId].chatLogs.filter(log => log.timestamp > cutoff);
@@ -66,7 +62,7 @@ setInterval(() => {
 
 io.on('connection', (socket) => {
     
-    // 接続時にグローバルチャット履歴を送信
+    // 接続時にグローバル履歴送信
     socket.emit('chatHistory', { type: 'global', logs: globalChatLogs });
 
     // --- CHAT SYSTEM ---
@@ -93,26 +89,18 @@ io.on('connection', (socket) => {
     socket.on('joinRoom', ({ username, room }) => {
         if (!rooms[room]) {
             rooms[room] = {
-                players: [],
-                gameActive: false,
-                // BJ State
+                players: [], gameActive: false,
                 deck: [], dealerHand: [], bjTurnIndex: 0, bjPhase: 'lobby',
                 maxRounds: FIXED_ROUNDS, currentRound: 0,
-                // Room Chat History
                 chatLogs: []
             };
         }
         const r = rooms[room];
         
-        // 多重参加防止
         const existing = r.players.find(p => p.id === socket.id);
-        if (!existing && r.players.length >= 4) {
-            socket.emit('error', 'ROOM FULL');
-            return;
-        }
+        if (!existing && r.players.length >= 4) { socket.emit('error', 'ROOM FULL'); return; }
 
         const colors = ['#ff0055', '#00eaff', '#00ff41', '#ffff00'];
-        
         if (!existing) {
             const newPlayer = { 
                 id: socket.id, username, color: colors[r.players.length],
@@ -120,33 +108,22 @@ io.on('connection', (socket) => {
             };
             r.players.push(newPlayer);
         }
-        
         socket.join(room);
-        
         const me = r.players.find(p => p.id === socket.id);
         
-        // クライアントへ初期情報を送信
         socket.emit('joined', { color: me.color, mySeat: r.players.indexOf(me) });
-        
-        // ルームチャット履歴を送信
         socket.emit('chatHistory', { type: 'room', logs: r.chatLogs });
-
-        // ルーム更新通知
         io.to(room).emit('roomUpdate', { players: r.players, maxRounds: FIXED_ROUNDS });
     });
 
-    // --- DISCONNECT ---
     socket.on('disconnect', () => {
         for (const roomId in rooms) {
             const r = rooms[roomId];
             const idx = r.players.findIndex(p => p.id === socket.id);
             if (idx !== -1) {
                 r.players.splice(idx, 1);
-                if (r.players.length === 0) {
-                    delete rooms[roomId]; // 空になったら部屋削除
-                } else {
-                    io.to(roomId).emit('roomUpdate', { players: r.players, maxRounds: FIXED_ROUNDS });
-                }
+                if (r.players.length === 0) delete rooms[roomId];
+                else io.to(roomId).emit('roomUpdate', { players: r.players, maxRounds: FIXED_ROUNDS });
                 break;
             }
         }
@@ -172,8 +149,7 @@ io.on('connection', (socket) => {
             let bet = parseInt(amount);
             if(p.score < bet) bet = p.score; 
             p.currentBet = bet; p.score -= bet;
-            io.to(room).emit('roomUpdate', { players: r.players, maxRounds: FIXED_ROUNDS }); // Update scores
-            
+            io.to(room).emit('roomUpdate', { players: r.players, maxRounds: FIXED_ROUNDS });
             const active = r.players.filter(pl => pl.status !== 'bankrupt');
             if(active.every(pl => pl.currentBet > 0)) dealBjCards(room);
         }
@@ -184,18 +160,14 @@ io.on('connection', (socket) => {
         if(!r || r.bjPhase !== 'playing') return;
         const p = r.players[r.bjTurnIndex];
         if(p.id !== socket.id) return;
-
         if(action === 'hit') {
             p.hand.push(r.deck.pop());
             if(getHandScore(p.hand) > 21) { p.status = 'bust'; nextBjTurn(room); }
             else updateBjState(room);
-        } else {
-            p.status = 'stand'; nextBjTurn(room);
-        }
+        } else { p.status = 'stand'; nextBjTurn(room); }
     });
 });
 
-// --- BJ FLOW ---
 function startBjMatch(room) {
     const r = rooms[room];
     r.gameActive = true; r.currentRound = 0;
@@ -204,30 +176,16 @@ function startBjMatch(room) {
 }
 function startBjRound(room) {
     const r = rooms[room];
-    r.currentRound++;
-    r.bjPhase = 'betting';
-    r.deck = createDeck();
-    r.dealerHand = [];
-    r.players.forEach(p => {
-        p.hand = []; p.currentBet = 0; p.result = '';
-        p.status = (p.score <= 0) ? 'bankrupt' : 'playing';
-    });
+    r.currentRound++; r.bjPhase = 'betting'; r.deck = createDeck(); r.dealerHand = [];
+    r.players.forEach(p => { p.hand = []; p.currentBet = 0; p.result = ''; p.status = (p.score <= 0) ? 'bankrupt' : 'playing'; });
     if(r.players.every(p => p.status === 'bankrupt')) return endBjMatch(room, "ALL BANKRUPT");
     io.to(room).emit('bjRoundStart', { round: r.currentRound, maxRounds: r.maxRounds });
 }
 function dealBjCards(room) {
     const r = rooms[room];
-    r.bjPhase = 'playing';
-    r.dealerHand = [r.deck.pop(), r.deck.pop()];
-    r.players.forEach(p => {
-        if(p.status !== 'bankrupt') {
-            p.hand = [r.deck.pop(), r.deck.pop()];
-            if(getHandScore(p.hand) === 21) p.status = 'blackjack';
-        }
-    });
-    r.bjTurnIndex = 0;
-    updateBjState(room);
-    checkSkipTurn(room);
+    r.bjPhase = 'playing'; r.dealerHand = [r.deck.pop(), r.deck.pop()];
+    r.players.forEach(p => { if(p.status!=='bankrupt'){ p.hand=[r.deck.pop(),r.deck.pop()]; if(getHandScore(p.hand)===21)p.status='blackjack'; } });
+    r.bjTurnIndex = 0; updateBjState(room); checkSkipTurn(room);
 }
 function checkSkipTurn(room) {
     const r = rooms[room];
@@ -236,38 +194,36 @@ function checkSkipTurn(room) {
     if(p.status === 'bankrupt' || p.status === 'blackjack') nextBjTurn(room);
 }
 function nextBjTurn(room) {
-    const r = rooms[room];
-    r.bjTurnIndex++;
-    if(r.bjTurnIndex >= r.players.length) runDealerTurn(room);
-    else checkSkipTurn(room);
+    const r = rooms[room]; r.bjTurnIndex++;
+    if(r.bjTurnIndex >= r.players.length) runDealerTurn(room); else checkSkipTurn(room);
     updateBjState(room);
 }
 function runDealerTurn(room) {
-    const r = rooms[room];
-    let dScore = getHandScore(r.dealerHand);
+    const r = rooms[room]; let dScore = getHandScore(r.dealerHand);
     while(dScore < 17) { r.dealerHand.push(r.deck.pop()); dScore = getHandScore(r.dealerHand); }
-    const dBust = dScore > 21;
-    const dBj = (dScore === 21 && r.dealerHand.length === 2);
+    const dBust = dScore > 21; const dBj = (dScore === 21 && r.dealerHand.length === 2);
     r.players.forEach(p => {
         if(p.status === 'bankrupt') return;
         const pScore = getHandScore(p.hand);
         let mult = 0;
-        if(p.status === 'bust') { p.result = 'BUST'; mult = 0; }
-        else if(p.status === 'blackjack') { 
-            if(dBj) { p.result = 'PUSH (BJ)'; mult = 1; } else { p.result = 'BLACKJACK!'; mult = 2.5; }
-        }
-        else if(dBust || pScore > dScore) { p.result = 'WIN'; mult = 2; }
-        else if(pScore === dScore) { p.result = 'PUSH'; mult = 1; }
-        else { p.result = 'LOSE'; mult = 0; }
+        if(p.status === 'bust') mult = 0;
+        else if(p.status === 'blackjack') mult = dBj ? 1 : 2.5;
+        else if(dBust || pScore > dScore) mult = 2;
+        else if(pScore === dScore) mult = 1;
+        
+        if(mult === 0) p.result = 'LOSE';
+        if(p.status==='bust') p.result = 'BUST';
+        if(mult === 1) p.result = 'PUSH';
+        if(mult >= 2) p.result = 'WIN';
+        if(p.status==='blackjack') p.result = 'BLACKJACK!';
+        
         p.score += Math.floor(p.currentBet * mult);
     });
     io.to(room).emit('bjRoundOver', { dealerHand: r.dealerHand, players: r.players, isMatchOver: r.currentRound >= r.maxRounds });
-    if(r.currentRound >= r.maxRounds) endBjMatch(room, "MATCH COMPLETE");
-    else setTimeout(() => startBjRound(room), 5000);
+    if(r.currentRound >= r.maxRounds) endBjMatch(room, "MATCH COMPLETE"); else setTimeout(() => startBjRound(room), 5000);
 }
 function endBjMatch(room, msg) {
-    const r = rooms[room];
-    r.gameActive = false;
+    const r = rooms[room]; r.gameActive = false;
     let winner = r.players.reduce((p, c) => (p.score > c.score) ? p : c);
     io.to(room).emit('gameOver', { winner: winner.color, msg: `${msg} - WINNER: ${winner.username}` });
     setTimeout(() => { if (rooms[room]) { io.to(room).emit('forceReset'); delete rooms[room]; } }, 15000);

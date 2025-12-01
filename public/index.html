@@ -45,21 +45,30 @@
             box-shadow: 0 0 20px rgba(0,0,0,0.8);
         }
 
-        /* --- LOGIN --- */
+        /* --- LOGIN & LOBBY LAYOUT --- */
         #login-overlay {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.9); z-index: 100;
-            display: flex; align-items: center; justify-content: center;
+            display: flex; gap: 40px; align-items: center; justify-content: center;
         }
         .box {
-            background: #111; border: 1px solid #444; padding: 40px;
-            display: flex; flex-direction: column; gap: 20px; width: 300px;
+            background: #111; border: 1px solid #444; padding: 30px;
+            display: flex; flex-direction: column; gap: 15px; width: 300px; height: 400px;
             box-shadow: 0 0 30px var(--green); border-radius: 4px;
         }
+        .login-title { text-align:center; margin:0; color:#888; letter-spacing: 0.1em; }
+        
+        .lobby-chat-container {
+            display: flex; flex-direction: column; height: 100%;
+        }
+        #lobby-log {
+            flex-grow: 1; background: #000; border: 1px solid #333; padding: 10px;
+            overflow-y: auto; font-size: 0.8rem; color: #ccc; margin-bottom: 10px;
+        }
+
         input, button {
             background: #000; border: 1px solid #444; color: var(--text);
-            padding: 15px; font-family: inherit; text-transform: uppercase; outline: none;
-            font-size: 1rem;
+            padding: 12px; font-family: inherit; text-transform: uppercase; outline: none; font-size: 1rem;
         }
         input:focus { border-color: var(--green); box-shadow: 0 0 10px rgba(0,255,65,0.3); }
         button { cursor: pointer; font-weight: bold; transition: 0.2s; }
@@ -71,7 +80,7 @@
         }
         .btn-ready:hover { background: var(--gold); color: #000; }
 
-        /* --- CHAT UI (TABS) --- */
+        /* --- CHAT UI --- */
         .chat-tabs { display: flex; border-bottom: 1px solid #444; }
         .tab-btn {
             flex: 1; padding: 12px; background: rgba(0,0,0,0.5); cursor: pointer;
@@ -84,7 +93,7 @@
         .chat-list {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             overflow-y: auto; padding: 10px; box-sizing: border-box;
-            display: none; /* Controlled by JS */
+            display: none; 
         }
         .chat-list.active { display: block; }
         
@@ -95,15 +104,13 @@
         #chat-input { flex-grow: 1; border: none; padding: 10px; background: transparent; }
         #chat-send { width: auto; border: none; color: var(--green); background: transparent; }
 
-        /* --- GAME UI (BLACKJACK) --- */
+        /* --- BJ UI --- */
         h1 { position: absolute; top: 10px; left: 20px; margin: 0; font-size: 2rem; color: #fff; text-shadow: 0 0 10px var(--green); pointer-events: none; }
-        
         #bj-table { width: 90%; height: 90%; border-radius: 100px; border: 4px double #444; background: radial-gradient(circle, #0a150a, #000); position: relative; }
         .bj-dealer { position: absolute; top: 15%; width: 100%; text-align: center; }
         .bj-seats { position: absolute; bottom: 5%; width: 100%; display: flex; justify-content: space-around; align-items: flex-end; }
         .bj-seat { width: 140px; min-height: 200px; background: rgba(0,0,0,0.5); border: 1px dashed #444; padding: 10px; text-align: center; display: flex; flex-direction: column; align-items: center; position: relative; }
         .bj-seat.active { border-color: #fff; background: rgba(50,50,50,0.8); box-shadow: 0 0 15px rgba(255,255,255,0.2); }
-        
         .cards { display: flex; justify-content: center; height: 70px; margin-top: 10px; }
         .card { width: 45px; height: 65px; background: #eee; color: #000; border-radius: 4px; display: flex; justify-content: center; align-items: center; font-weight: bold; margin-left: -20px; border: 1px solid #999; animation: deal 0.3s ease-out; font-size: 1.2rem; }
         .card:first-child { margin-left: 0; }
@@ -124,13 +131,30 @@
 </head>
 <body>
 
-    <!-- LOGIN -->
+    <!-- LOGIN & LOBBY (2 Column Layout) -->
     <div id="login-overlay">
+        <!-- LEFT: LOGIN -->
         <div class="box">
-            <h2 style="text-align:center; margin:0; color:#888;">NITA GAMES<br><span style="font-size:0.7em; color:var(--green);">PROTOCOL 21</span></h2>
-            <input type="text" id="username" placeholder="CODENAME" maxlength="10">
-            <input type="text" id="room" placeholder="ROOM ID">
-            <button onclick="joinGame()">INITIALIZE SYSTEM</button>
+            <h2 class="login-title">NITA GAMES<br><span style="font-size:0.7em; color:var(--green);">PROTOCOL 21</span></h2>
+            <div style="flex-grow:1; display:flex; flex-direction:column; justify-content:center; gap:15px;">
+                <input type="text" id="username" placeholder="CODENAME" maxlength="10">
+                <input type="text" id="room" placeholder="ROOM ID">
+                <button onclick="joinGame()">INITIALIZE SYSTEM</button>
+            </div>
+        </div>
+
+        <!-- RIGHT: LOBBY CHAT -->
+        <div class="box">
+            <h2 class="login-title">// GLOBAL FREQUENCY</h2>
+            <div class="lobby-chat-container">
+                <div id="lobby-log-box" style="flex-grow:1; background:#000; border:1px solid #333; padding:10px; overflow-y:auto; font-size:0.8rem; color:#ccc; margin-bottom:10px;">
+                    <!-- Pre-login Global Logs appear here -->
+                </div>
+                <div style="display:flex; border-top:1px solid #444;">
+                    <input type="text" id="lobby-input" placeholder="BROADCAST..." style="flex-grow:1; border:none;" onkeydown="if(event.key==='Enter')sendLobby()">
+                    <button style="width:auto; border:none; color:var(--green);" onclick="sendLobby()">TX</button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -185,12 +209,12 @@
     <script>
         const socket = io();
         let roomID = '', myUser = '', myColor = '';
-        let currentTab = 'global'; // 'global' or 'room'
+        let currentTab = 'global';
 
         // --- TIME HELPER ---
         function getRelativeTime(timestamp) {
             const now = Date.now();
-            const diff = Math.floor((now - timestamp) / 1000); // seconds
+            const diff = Math.floor((now - timestamp) / 1000);
             if (diff < 60) return 'Just now';
             if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
             return `${Math.floor(diff / 3600)}h ago`;
@@ -203,26 +227,26 @@
             document.getElementById('tab-room').className = tab === 'room' ? 'tab-btn active' : 'tab-btn';
             document.getElementById('list-global').className = tab === 'global' ? 'chat-list active' : 'chat-list';
             document.getElementById('list-room').className = tab === 'room' ? 'chat-list active' : 'chat-list';
-            
-            // Auto scroll to bottom when switching
-            const list = document.getElementById(`list-${tab}`);
-            list.scrollTop = list.scrollHeight;
+            const list = document.getElementById(`list-${tab}`); list.scrollTop = list.scrollHeight;
+        }
+
+        function sendLobby() {
+            const inp = document.getElementById('lobby-input');
+            const txt = inp.value.trim();
+            const senderName = document.getElementById('username').value || 'ANONYMOUS';
+            if(txt) {
+                socket.emit('sendChat', { type: 'global', username: senderName, text: txt });
+                inp.value = '';
+            }
         }
 
         function sendChat() {
             const inp = document.getElementById('chat-input');
             const txt = inp.value.trim();
             if (!txt) return;
+            if (currentTab === 'room' && !roomID) return alert("JOIN A ROOM FIRST");
 
-            // Room chat blocked if not joined
-            if (currentTab === 'room' && !roomID) {
-                alert("JOIN A ROOM FIRST");
-                return;
-            }
-
-            // If global, use temp username if not logged in
             const senderName = myUser || document.getElementById('username').value || 'ANONYMOUS';
-
             socket.emit('sendChat', {
                 type: currentTab,
                 room: roomID,
@@ -234,32 +258,44 @@
         }
 
         function renderMsg(msg) {
-            const targetList = document.getElementById(`list-${msg.type}`);
-            const div = document.createElement('div');
-            div.className = 'chat-msg';
-            
-            const timeStr = getRelativeTime(msg.timestamp);
-            const userColor = msg.color === 'black' ? '#aaa' : (msg.color === 'white' ? '#fff' : msg.color);
-            
-            div.innerHTML = `
-                <span class="time-tag">${timeStr}</span>
-                <span style="color:${userColor}; font-weight:bold;">[${msg.username}]</span>
-                <span style="color:#ddd;">${msg.text}</span>
-            `;
-            targetList.appendChild(div);
-            targetList.scrollTop = targetList.scrollHeight;
+            // Render to Main Tabs
+            if (msg.type === 'global' || msg.type === 'room') {
+                const targetList = document.getElementById(`list-${msg.type}`);
+                const div = document.createElement('div');
+                div.className = 'chat-msg';
+                const timeStr = getRelativeTime(msg.timestamp);
+                const userColor = msg.color === 'black' ? '#aaa' : (msg.color === 'white' ? '#fff' : (msg.color || '#fff'));
+                
+                div.innerHTML = `<span class="time-tag">${timeStr}</span><span style="color:${userColor}; font-weight:bold;">[${msg.username}]</span> <span style="color:#ddd;">${msg.text}</span>`;
+                targetList.appendChild(div);
+                targetList.scrollTop = targetList.scrollHeight;
+            }
+
+            // Also Render to Lobby Chat Box if it's GLOBAL
+            if (msg.type === 'global') {
+                const lobbyBox = document.getElementById('lobby-log-box');
+                const div = document.createElement('div');
+                div.style.marginBottom = "4px";
+                div.style.borderBottom = "1px solid #333";
+                div.innerHTML = `<span style="float:right; font-size:0.7em; color:#555;">${getRelativeTime(msg.timestamp)}</span><span style="color:${msg.color||'#fff'}; font-weight:bold;">[${msg.username}]</span> ${msg.text}`;
+                lobbyBox.appendChild(div);
+                lobbyBox.scrollTop = lobbyBox.scrollHeight;
+            }
         }
 
         socket.on('chatMsg', msg => renderMsg(msg));
         
         socket.on('chatHistory', ({ type, logs }) => {
             const targetList = document.getElementById(`list-${type}`);
-            // Clear existing except header
             targetList.innerHTML = `<div style="color:#666; text-align:center; margin-top:10px;">// ${type.toUpperCase()} HISTORY SYNCED</div>`;
+            
+            // Clear Lobby Box if global
+            if(type === 'global') document.getElementById('lobby-log-box').innerHTML = '';
+
             logs.forEach(log => renderMsg(log));
         });
 
-        // --- GAME JOIN ---
+        // --- GAME LOGIC ---
         function joinGame() {
             myUser = document.getElementById('username').value || 'ANONYMOUS';
             roomID = document.getElementById('room').value;
@@ -271,7 +307,6 @@
             myColor = d.color;
             document.getElementById('login-overlay').style.display = 'none';
             document.getElementById('main-interface').style.display = 'flex';
-            // Auto switch to room tab
             switchTab('room');
         });
 
@@ -280,7 +315,6 @@
             renderBjSeats(d.players);
         });
 
-        // --- BJ UI ---
         function renderBjSeats(players) {
             const c = document.getElementById('bj-seats'); c.innerHTML = '';
             players.forEach((p, i) => {
@@ -295,7 +329,6 @@
                 c.appendChild(div);
                 if(p.hand) { const h = div.querySelector('.cards'); p.hand.forEach(cd=>h.appendChild(mkCard(cd))); }
                 
-                // READY Button
                 if(p.id === socket.id && !p.ready && p.hand.length === 0) {
                     const btn = document.createElement('button'); btn.className = "btn-ready"; btn.innerText = "READY";
                     btn.onclick = () => socket.emit('bjToggleReady', {room:roomID});
@@ -341,11 +374,7 @@
              document.getElementById('sys-msg-overlay').innerText = d.isMatchOver ? "MATCH COMPLETE" : "ROUND END";
         });
         
-        socket.on('gameOver', d => { 
-            alert(d.msg); 
-            // ページリロードせず、初期状態に戻す処理が理想だが、簡易的にリロード
-            location.reload(); 
-        });
+        socket.on('gameOver', d => { alert(d.msg); location.reload(); });
         socket.on('forceReset', () => location.reload());
         socket.on('error', m => alert(m));
 
