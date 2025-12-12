@@ -3,380 +3,425 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NITA GAMES // PROTOCOL 21</title>
+    <title>NITA GAMES</title>
     <script src="/socket.io/socket.io.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;500;700&display=swap" rel="stylesheet">
     <style>
-        /* --- CYBERPUNK THEME --- */
+        /* --- MODERN GLASSPUNK THEME --- */
         :root {
-            --bg: #050505;
-            --text: #e0e0e0;
-            --green: #00ff41;
-            --red: #ff0055;
-            --cyan: #00eaff;
-            --gold: #ffd700;
-            --panel: rgba(10,15,10,0.95);
+            --bg: #0f0c29;
+            --gradient: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+            --panel: rgba(255, 255, 255, 0.08);
+            --border: rgba(255, 255, 255, 0.15);
+            --text: #ffffff;
+            --accent: #00f260;
+            --accent-sec: #0575E6;
+            --uno-red: #ff5e57;
+            --uno-blue: #0fbcf9;
+            --uno-green: #0be881;
+            --uno-yellow: #ffdd59;
         }
+        
         body {
-            background-color: var(--bg); color: var(--text);
-            font-family: 'Courier New', monospace;
+            background: var(--gradient);
+            color: var(--text);
+            font-family: 'Outfit', sans-serif;
             margin: 0; height: 100vh; display: flex; overflow: hidden;
-            background-image: linear-gradient(rgba(0,255,65,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(0,255,65,0.03) 1px, transparent 1px);
-            background-size: 30px 30px;
-        }
-        body::after {
-            content: " "; position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: linear-gradient(rgba(18,16,16,0) 50%, rgba(0,0,0,0.25) 50%);
-            background-size: 100% 4px; pointer-events: none; z-index: 50; opacity: 0.5;
         }
 
         /* --- LAYOUT --- */
-        #main-interface {
-            display: flex; width: 100%; height: 100%;
-            padding: 20px; gap: 20px; box-sizing: border-box; z-index: 10;
+        #main-app { display: flex; width: 100%; height: 100%; padding: 25px; gap: 25px; box-sizing: border-box; }
+        
+        #game-view { 
+            flex: 3; border-radius: 24px; 
+            background: var(--panel); border: 1px solid var(--border);
+            backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+            position: relative; overflow: hidden; display: flex; flex-direction: column;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.3);
         }
-        #game-area {
-            flex: 3; display: flex; flex-direction: column; align-items: center; justify-content: center;
-            border: 1px solid #333; background: var(--panel); border-radius: 8px; position: relative;
-            box-shadow: 0 0 20px rgba(0,0,0,0.8);
-        }
-        #chat-sidebar {
-            flex: 1; display: flex; flex-direction: column; min-width: 320px;
-            border: 1px solid #333; background: var(--panel); border-radius: 8px;
-            box-shadow: 0 0 20px rgba(0,0,0,0.8);
+        
+        #sidebar { 
+            flex: 1; min-width: 320px; border-radius: 24px; 
+            background: var(--panel); border: 1px solid var(--border);
+            backdrop-filter: blur(20px); display: flex; flex-direction: column;
+            overflow: hidden; box-shadow: 0 20px 50px rgba(0,0,0,0.3);
         }
 
-        /* --- LOGIN & LOBBY LAYOUT --- */
-        #login-overlay {
+        /* --- COMPONENTS --- */
+        h1 { position: absolute; top: 25px; left: 35px; margin: 0; font-weight: 700; letter-spacing: 2px; background: linear-gradient(to right, #00f260, #0575E6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        
+        button {
+            background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2);
+            color: white; padding: 12px 24px; border-radius: 12px;
+            font-weight: 600; cursor: pointer; transition: 0.3s;
+            font-family: inherit;
+        }
+        button:hover { background: white; color: #302b63; transform: translateY(-2px); box-shadow: 0 10px 20px rgba(0,0,0,0.2); }
+        
+        input, select {
+            background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.2);
+            color: white; padding: 14px; border-radius: 12px; outline: none; width: 100%; 
+            box-sizing: border-box; font-family: inherit; transition: 0.3s;
+        }
+        input:focus { border-color: var(--accent); background: rgba(0,0,0,0.5); }
+
+        /* --- LOGIN --- */
+        #login-modal {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.9); z-index: 100;
+            background: rgba(0,0,0,0.85); backdrop-filter: blur(10px); z-index: 100;
             display: flex; gap: 40px; align-items: center; justify-content: center;
         }
-        .box {
-            background: #111; border: 1px solid #444; padding: 30px;
-            display: flex; flex-direction: column; gap: 15px; width: 300px; height: 400px;
-            box-shadow: 0 0 30px var(--green); border-radius: 4px;
-        }
-        .login-title { text-align:center; margin:0; color:#888; letter-spacing: 0.1em; }
-        
-        .lobby-chat-container {
-            display: flex; flex-direction: column; height: 100%;
-        }
-        #lobby-log {
-            flex-grow: 1; background: #000; border: 1px solid #333; padding: 10px;
-            overflow-y: auto; font-size: 0.8rem; color: #ccc; margin-bottom: 10px;
+        .glass-card {
+            background: rgba(255,255,255,0.05); padding: 40px; border-radius: 30px;
+            width: 340px; display: flex; flex-direction: column; gap: 15px;
+            border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 20px 60px rgba(0,0,0,0.5);
         }
 
-        input, button {
-            background: #000; border: 1px solid #444; color: var(--text);
-            padding: 12px; font-family: inherit; text-transform: uppercase; outline: none; font-size: 1rem;
-        }
-        input:focus { border-color: var(--green); box-shadow: 0 0 10px rgba(0,255,65,0.3); }
-        button { cursor: pointer; font-weight: bold; transition: 0.2s; }
-        button:hover { background: var(--green); color: #000; box-shadow: 0 0 15px var(--green); }
+        /* --- CHAT --- */
+        .tabs { display: flex; padding: 10px 10px 0; gap: 10px; }
+        .tab { flex: 1; padding: 12px; text-align: center; cursor: pointer; color: rgba(255,255,255,0.5); transition: 0.3s; border-radius: 12px 12px 0 0; }
+        .tab.active { color: white; background: rgba(255,255,255,0.05); font-weight: 600; }
         
-        .btn-ready { 
-            border-color: var(--gold); color: var(--gold); padding: 8px; margin-top: 5px; 
-            font-size: 0.8rem; width: 100%; 
-        }
-        .btn-ready:hover { background: var(--gold); color: #000; }
+        .chat-content { flex: 1; overflow-y: auto; padding: 20px; background: rgba(0,0,0,0.2); }
+        .msg { margin-bottom: 12px; font-size: 0.9rem; line-height: 1.5; }
+        .msg strong { margin-right: 8px; }
+        
+        .input-area { padding: 20px; display: flex; gap: 10px; border-top: 1px solid var(--border); }
 
-        /* --- CHAT UI --- */
-        .chat-tabs { display: flex; border-bottom: 1px solid #444; }
-        .tab-btn {
-            flex: 1; padding: 12px; background: rgba(0,0,0,0.5); cursor: pointer;
-            text-align: center; color: #666; font-weight: bold; border: none;
-            transition: 0.2s; border-bottom: 2px solid transparent;
-        }
-        .tab-btn.active { color: #fff; background: rgba(0,255,65,0.05); border-bottom-color: var(--green); text-shadow: 0 0 5px var(--green); }
+        /* --- UNO TABLE --- */
+        #uno-table { width: 100%; height: 100%; position: relative; display: none; }
         
-        .chat-container { flex-grow: 1; position: relative; overflow: hidden; }
-        .chat-list {
+        .opp-container {
+            position: absolute; top: 0; left: 0; width: 100%; height: 50%;
+            display: flex; justify-content: center; align-items: center; gap: 30px;
+            padding-top: 20px;
+        }
+        .opp-card {
+            background: rgba(0,0,0,0.4); padding: 15px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.1);
+            text-align: center; width: 100px; transition: 0.3s;
+        }
+        .opp-card.turn { border-color: var(--accent); transform: scale(1.1); box-shadow: 0 0 20px rgba(0,242,96,0.3); }
+        .opp-card.cpu { border-style: dashed; }
+
+        .center-area {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -20%);
+            display: flex; gap: 40px; align-items: center; z-index: 5;
+        }
+        .uno-card {
+            width: 90px; height: 135px; border-radius: 12px;
+            display: flex; justify-content: center; align-items: center;
+            font-size: 2.5rem; font-weight: 800; color: white;
+            text-shadow: 2px 2px 0 rgba(0,0,0,0.1);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3); border: 4px solid white;
+            position: relative; user-select: none; transition: 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        .uno-card:hover { transform: translateY(-20px) scale(1.1); z-index: 100; cursor: pointer; }
+        
+        /* Colors */
+        .u-red { background: var(--uno-red); }
+        .u-blue { background: var(--uno-blue); }
+        .u-green { background: var(--uno-green); }
+        .u-yellow { background: var(--uno-yellow); color: #444; text-shadow: none; }
+        .u-black { background: #2d3436; }
+        .u-back { background: #2d3436; background-image: radial-gradient(#444 15%, transparent 16%); background-size: 20px 20px; }
+
+        .current-bg {
+            width: 300px; height: 300px; border-radius: 50%; position: absolute; top:50%; left:50%; transform:translate(-50%,-20%);
+            z-index: 0; opacity: 0.2; filter: blur(60px); transition: 1s;
+        }
+
+        .my-hand {
+            position: absolute; bottom: 30px; width: 100%;
+            display: flex; justify-content: center; gap: -40px; /* Overlap */
+            padding-bottom: 20px;
+        }
+        .my-hand:hover .uno-card { margin-right: 10px; } /* Spread on hover */
+
+        #color-picker {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            overflow-y: auto; padding: 10px; box-sizing: border-box;
-            display: none; 
+            background: rgba(0,0,0,0.85); z-index: 50; display: none;
+            align-items: center; justify-content: center; gap: 30px; backdrop-filter: blur(5px);
         }
-        .chat-list.active { display: block; }
-        
-        .chat-msg { margin-bottom: 6px; word-break: break-word; font-size: 0.85rem; line-height: 1.4; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 4px; }
-        .time-tag { font-size: 0.7rem; color: #555; margin-left: 5px; float: right; }
-        
-        .chat-input-row { display: flex; border-top: 1px solid #444; padding: 5px; }
-        #chat-input { flex-grow: 1; border: none; padding: 10px; background: transparent; }
-        #chat-send { width: auto; border: none; color: var(--green); background: transparent; }
+        .cp-btn { width: 100px; height: 100px; border-radius: 50%; cursor: pointer; border: 6px solid white; transition:0.2s; }
+        .cp-btn:hover { transform: scale(1.1); }
 
         /* --- BJ UI --- */
-        h1 { position: absolute; top: 10px; left: 20px; margin: 0; font-size: 2rem; color: #fff; text-shadow: 0 0 10px var(--green); pointer-events: none; }
-        #bj-table { width: 90%; height: 90%; border-radius: 100px; border: 4px double #444; background: radial-gradient(circle, #0a150a, #000); position: relative; }
-        .bj-dealer { position: absolute; top: 15%; width: 100%; text-align: center; }
-        .bj-seats { position: absolute; bottom: 5%; width: 100%; display: flex; justify-content: space-around; align-items: flex-end; }
-        .bj-seat { width: 140px; min-height: 200px; background: rgba(0,0,0,0.5); border: 1px dashed #444; padding: 10px; text-align: center; display: flex; flex-direction: column; align-items: center; position: relative; }
-        .bj-seat.active { border-color: #fff; background: rgba(50,50,50,0.8); box-shadow: 0 0 15px rgba(255,255,255,0.2); }
-        .cards { display: flex; justify-content: center; height: 70px; margin-top: 10px; }
-        .card { width: 45px; height: 65px; background: #eee; color: #000; border-radius: 4px; display: flex; justify-content: center; align-items: center; font-weight: bold; margin-left: -20px; border: 1px solid #999; animation: deal 0.3s ease-out; font-size: 1.2rem; }
-        .card:first-child { margin-left: 0; }
-        .card.red { color: #d00; }
-        .card.back { background: #222; color: #222; border-color: #444; background-image: repeating-linear-gradient(45deg, #333 0, #333 5px, #444 5px, #444 10px); }
-        @keyframes deal { from{opacity:0;transform:translateY(-50px);} to{opacity:1;transform:translateY(0);} }
-
-        #bet-ui { position: absolute; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.85); z-index: 20; border-radius: 90px; display: none; flex-direction: column; justify-content: center; align-items: center; }
-        .chip { width: 70px; height: 70px; border-radius: 50%; background: #000; border: 2px solid var(--gold); color: var(--gold); display: flex; justify-content: center; align-items: center; font-weight: bold; cursor: pointer; margin: 10px; transition: 0.2s; }
-        .chip:hover { background: var(--gold); color: #000; transform: scale(1.1); }
-
-        #sys-msg-overlay {
-            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
-            color: #fff; font-size: 1.2rem; text-shadow: 0 0 10px rgba(255,255,255,0.8);
-            pointer-events: none; z-index: 30; text-align: center;
+        #bj-table { width: 100%; height: 100%; display: none; flex-direction: column; align-items: center; justify-content: center; }
+        .bj-cards { display: flex; gap: 10px; min-height: 100px; margin: 10px 0; justify-content: center; }
+        .bj-card {
+            width: 70px; height: 100px; background: white; color: black; border-radius: 8px;
+            display: flex; justify-content: center; align-items: center; font-size: 1.5rem; font-weight: bold;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+        .bj-card.red { color: #e74c3c; }
+        
+        #bet-overlay {
+            position: absolute; width: 100%; height: 100%; background: rgba(0,0,0,0.85); backdrop-filter: blur(10px);
+            display: none; flex-direction: column; justify-content: center; align-items: center; z-index: 20;
         }
     </style>
 </head>
 <body>
 
-    <!-- LOGIN & LOBBY (2 Column Layout) -->
-    <div id="login-overlay">
-        <!-- LEFT: LOGIN -->
-        <div class="box">
-            <h2 class="login-title">NITA GAMES<br><span style="font-size:0.7em; color:var(--green);">PROTOCOL 21</span></h2>
-            <div style="flex-grow:1; display:flex; flex-direction:column; justify-content:center; gap:15px;">
-                <input type="text" id="username" placeholder="CODENAME" maxlength="10">
-                <input type="text" id="room" placeholder="ROOM ID">
-                <button onclick="joinGame()">INITIALIZE SYSTEM</button>
-            </div>
+    <!-- LOGIN -->
+    <div id="login-modal">
+        <div class="glass-card">
+            <h2 style="text-align:center; margin:0;">NITA GAMES</h2>
+            <input type="text" id="username" placeholder="Nickname">
+            <input type="text" id="room" placeholder="Room ID (e.g. 101)">
+            <select id="gameType">
+                <option value="uno">UNO (Max 6)</option>
+                <option value="blackjack">Protocol 21 (BJ)</option>
+                <option value="override">Override (Hi&Lo)</option>
+            </select>
+            <input type="number" id="buyin" value="1000" placeholder="Buy-In Credits">
+            <button onclick="joinGame()" style="background: linear-gradient(90deg, #00f260, #0575E6); border:none;">ENTER SYSTEM</button>
         </div>
-
-        <!-- RIGHT: LOBBY CHAT -->
-        <div class="box">
-            <h2 class="login-title">// GLOBAL FREQUENCY</h2>
-            <div class="lobby-chat-container">
-                <div id="lobby-log-box" style="flex-grow:1; background:#000; border:1px solid #333; padding:10px; overflow-y:auto; font-size:0.8rem; color:#ccc; margin-bottom:10px;">
-                    <!-- Pre-login Global Logs appear here -->
-                </div>
-                <div style="display:flex; border-top:1px solid #444;">
-                    <input type="text" id="lobby-input" placeholder="BROADCAST..." style="flex-grow:1; border:none;" onkeydown="if(event.key==='Enter')sendLobby()">
-                    <button style="width:auto; border:none; color:var(--green);" onclick="sendLobby()">TX</button>
-                </div>
+        
+        <!-- Lobby Chat -->
+        <div class="glass-card" style="height: 450px;">
+            <div style="text-align:center; color:#aaa; font-size:0.8rem; letter-spacing:1px;">GLOBAL LOBBY</div>
+            <div id="lobby-log" style="flex:1; background:rgba(0,0,0,0.2); border-radius:12px; overflow-y:auto; padding:15px; color:#ddd; font-size:0.85rem;"></div>
+            <div style="display:flex; gap:10px;">
+                <input id="lobby-input" placeholder="Say hello..." style="padding:10px;">
+                <button onclick="sendLobby()" style="width:60px; padding:0;">➤</button>
             </div>
         </div>
     </div>
 
-    <!-- MAIN INTERFACE -->
-    <div id="main-interface" style="display:none;">
-        <h1>PROTOCOL 21</h1>
-
-        <!-- GAME AREA -->
-        <div id="game-area">
-            <div id="bj-table">
-                <div style="position:absolute; top:20px; left:30px; color:var(--green); font-size:1.2rem;" id="bj-info">ROUND: 1/7</div>
+    <!-- MAIN APP -->
+    <div id="main-app" style="display:none;">
+        <div id="game-view">
+            <h1>NITA GAMES</h1>
+            
+            <!-- UNO UI -->
+            <div id="uno-table">
+                <div id="uno-bg" class="current-bg u-black"></div>
                 
-                <div id="bet-ui">
-                    <h2 style="color:#fff;">PLACE WAGER</h2>
-                    <div style="display:flex;">
-                        <div class="chip" onclick="bet(2)">2</div>
-                        <div class="chip" onclick="bet(5)">5</div>
-                        <div class="chip" onclick="bet(10)">10</div>
+                <div class="opp-container" id="uno-opponents"></div>
+                
+                <div class="center-area">
+                    <div style="text-align:center;">
+                        <div class="uno-card u-back" onclick="socket.emit('unoDraw', {room:roomID})">UNO</div>
+                        <div style="margin-top:5px; font-size:0.8rem; color:#aaa;">DRAW</div>
                     </div>
+                    <div id="uno-pile"></div>
                 </div>
 
-                <div class="bj-dealer">
-                    <div style="font-size:0.8rem; color:#888;">DEALER</div>
-                    <div class="cards" id="d-cards"></div>
+                <div class="my-hand" id="uno-hand"></div>
+                
+                <div id="color-picker">
+                    <div class="cp-btn u-red" onclick="pickColor('red')"></div>
+                    <div class="cp-btn u-blue" onclick="pickColor('blue')"></div>
+                    <div class="cp-btn u-green" onclick="pickColor('green')"></div>
+                    <div class="cp-btn u-yellow" onclick="pickColor('yellow')"></div>
                 </div>
-                <div class="bj-seats" id="bj-seats"></div>
             </div>
-            <div id="sys-msg-overlay"></div>
+
+            <!-- BJ / OVERRIDE UI -->
+            <div id="bj-table">
+                <div id="bj-round" style="color:#aaa;">ROUND -/-</div>
+                <div style="margin-bottom:10px; font-weight:bold;">DEALER</div>
+                <div class="bj-cards" id="d-hand"></div>
+                
+                <div id="bj-seats" style="display:flex; gap:20px; margin-top:50px; flex-wrap:wrap; justify-content:center;"></div>
+
+                <div id="bet-overlay">
+                    <h2 style="color:white;">PLACE BET</h2>
+                    <input type="range" id="bet-slider" min="10" max="1000" step="10" style="width:300px;" oninput="updateBet(this.value)">
+                    <div style="font-size:3rem; font-weight:bold; color:white; margin:20px;" id="bet-val">10</div>
+                    <button onclick="placeBet()" style="font-size:1.2rem;">CONFIRM BET</button>
+                </div>
+            </div>
+
+            <div id="sys-msg" style="position:absolute; bottom:120px; width:100%; text-align:center; color:white; pointer-events:none; font-size:1.5rem; text-shadow:0 2px 10px rgba(0,0,0,0.5);"></div>
         </div>
 
-        <!-- CHAT SIDEBAR -->
-        <div id="chat-sidebar">
-            <div class="chat-tabs">
-                <button class="tab-btn active" onclick="switchTab('global')" id="tab-global">GLOBAL</button>
-                <button class="tab-btn" onclick="switchTab('room')" id="tab-room">ROOM</button>
+        <!-- SIDEBAR -->
+        <div id="sidebar">
+            <div style="padding:20px; border-bottom:1px solid var(--border);">
+                <div style="font-size:0.8rem; color:#aaa; letter-spacing:1px;">CREDITS</div>
+                <div style="font-size:2rem; font-weight:700;" id="my-wealth">---</div>
             </div>
-            <div class="chat-container">
-                <div id="list-global" class="chat-list active">
-                    <div style="color:#666; text-align:center; margin-top:10px;">// GLOBAL FREQUENCY CONNECTED</div>
-                </div>
-                <div id="list-room" class="chat-list">
-                    <div style="color:#666; text-align:center; margin-top:10px;">// ROOM COMMS SECURE</div>
-                </div>
+            
+            <div class="tabs">
+                <div class="tab active" onclick="tab('global')" id="t-global">GLOBAL</div>
+                <div class="tab" onclick="tab('room')" id="t-room">ROOM</div>
             </div>
-            <div class="chat-input-row">
-                <input type="text" id="chat-input" placeholder="TRANSMIT..." onkeydown="if(event.key==='Enter')sendChat()">
-                <button id="chat-send" onclick="sendChat()">TX</button>
+            <div class="chat-content">
+                <div id="c-global" style="display:block;"></div>
+                <div id="c-room" style="display:none;"></div>
+            </div>
+            <div class="input-area">
+                <input id="chat-in" placeholder="Type message..." onkeydown="if(event.key==='Enter')sendChat()">
+                <button onclick="sendChat()" style="padding:10px 20px;">➤</button>
             </div>
         </div>
     </div>
 
     <script>
         const socket = io();
-        let roomID = '', myUser = '', myColor = '';
-        let currentTab = 'global';
+        let roomID='', myUser='', myColor='', activeTab='global';
+        let pendingCardIndex = -1;
 
-        // --- TIME HELPER ---
-        function getRelativeTime(timestamp) {
-            const now = Date.now();
-            const diff = Math.floor((now - timestamp) / 1000);
-            if (diff < 60) return 'Just now';
-            if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-            return `${Math.floor(diff / 3600)}h ago`;
-        }
-
-        // --- CHAT SYSTEM ---
-        function switchTab(tab) {
-            currentTab = tab;
-            document.getElementById('tab-global').className = tab === 'global' ? 'tab-btn active' : 'tab-btn';
-            document.getElementById('tab-room').className = tab === 'room' ? 'tab-btn active' : 'tab-btn';
-            document.getElementById('list-global').className = tab === 'global' ? 'chat-list active' : 'chat-list';
-            document.getElementById('list-room').className = tab === 'room' ? 'chat-list active' : 'chat-list';
-            const list = document.getElementById(`list-${tab}`); list.scrollTop = list.scrollHeight;
-        }
-
-        function sendLobby() {
-            const inp = document.getElementById('lobby-input');
-            const txt = inp.value.trim();
-            const senderName = document.getElementById('username').value || 'ANONYMOUS';
-            if(txt) {
-                socket.emit('sendChat', { type: 'global', username: senderName, text: txt });
-                inp.value = '';
-            }
-        }
-
-        function sendChat() {
-            const inp = document.getElementById('chat-input');
-            const txt = inp.value.trim();
-            if (!txt) return;
-            if (currentTab === 'room' && !roomID) return alert("JOIN A ROOM FIRST");
-
-            const senderName = myUser || document.getElementById('username').value || 'ANONYMOUS';
-            socket.emit('sendChat', {
-                type: currentTab,
-                room: roomID,
-                username: senderName,
-                text: txt,
-                color: myColor
-            });
-            inp.value = '';
-        }
-
-        function renderMsg(msg) {
-            // Render to Main Tabs
-            if (msg.type === 'global' || msg.type === 'room') {
-                const targetList = document.getElementById(`list-${msg.type}`);
-                const div = document.createElement('div');
-                div.className = 'chat-msg';
-                const timeStr = getRelativeTime(msg.timestamp);
-                const userColor = msg.color === 'black' ? '#aaa' : (msg.color === 'white' ? '#fff' : (msg.color || '#fff'));
-                
-                div.innerHTML = `<span class="time-tag">${timeStr}</span><span style="color:${userColor}; font-weight:bold;">[${msg.username}]</span> <span style="color:#ddd;">${msg.text}</span>`;
-                targetList.appendChild(div);
-                targetList.scrollTop = targetList.scrollHeight;
-            }
-
-            // Also Render to Lobby Chat Box if it's GLOBAL
-            if (msg.type === 'global') {
-                const lobbyBox = document.getElementById('lobby-log-box');
-                const div = document.createElement('div');
-                div.style.marginBottom = "4px";
-                div.style.borderBottom = "1px solid #333";
-                div.innerHTML = `<span style="float:right; font-size:0.7em; color:#555;">${getRelativeTime(msg.timestamp)}</span><span style="color:${msg.color||'#fff'}; font-weight:bold;">[${msg.username}]</span> ${msg.text}`;
-                lobbyBox.appendChild(div);
-                lobbyBox.scrollTop = lobbyBox.scrollHeight;
-            }
-        }
-
-        socket.on('chatMsg', msg => renderMsg(msg));
+        const $ = id => document.getElementById(id);
         
-        socket.on('chatHistory', ({ type, logs }) => {
-            const targetList = document.getElementById(`list-${type}`);
-            targetList.innerHTML = `<div style="color:#666; text-align:center; margin-top:10px;">// ${type.toUpperCase()} HISTORY SYNCED</div>`;
-            
-            // Clear Lobby Box if global
-            if(type === 'global') document.getElementById('lobby-log-box').innerHTML = '';
-
-            logs.forEach(log => renderMsg(log));
+        // --- CHAT ---
+        function sendLobby() { 
+            const t = $('lobby-input').value; 
+            if(t) { socket.emit('sendChat', {type:'global', username:$('username').value, text:t}); $('lobby-input').value=''; }
+        }
+        function sendChat() {
+            const t = $('chat-in').value;
+            if(t) { socket.emit('sendChat', {type:activeTab, room:roomID, username:myUser, text:t, color:myColor}); $('chat-in').value=''; }
+        }
+        function tab(mode) {
+            activeTab = mode;
+            $('t-global').className = mode==='global'?'tab active':'tab';
+            $('t-room').className = mode==='room'?'tab active':'tab';
+            $('c-global').style.display = mode==='global'?'block':'none';
+            $('c-room').style.display = mode==='room'?'block':'none';
+        }
+        socket.on('chatMsg', m => {
+            const h = `<div class="msg"><strong style="color:${m.color||'#aaa'}">${m.username}</strong> ${m.text}</div>`;
+            if(m.type==='global') { $('lobby-log').innerHTML+=h; $('c-global').innerHTML+=h; }
+            if(m.type==='room') $('c-room').innerHTML+=h;
+            $('lobby-log').scrollTop=$('lobby-log').scrollHeight;
+            $('c-global').scrollTop=$('c-global').scrollHeight;
+            $('c-room').scrollTop=$('c-room').scrollHeight;
         });
 
-        // --- GAME LOGIC ---
+        // --- JOIN ---
         function joinGame() {
-            myUser = document.getElementById('username').value || 'ANONYMOUS';
-            roomID = document.getElementById('room').value;
-            if(!roomID) return alert("ROOM ID REQUIRED");
-            socket.emit('joinRoom', { username: myUser, room: roomID });
+            myUser = $('username').value || 'GUEST';
+            roomID = $('room').value;
+            if(!roomID) return alert("Room ID required");
+            socket.emit('joinRoom', { username:myUser, room:roomID, gameType:$('gameType').value, buyInAmount:$('buyin').value });
         }
-
         socket.on('joined', d => {
             myColor = d.color;
-            document.getElementById('login-overlay').style.display = 'none';
-            document.getElementById('main-interface').style.display = 'flex';
-            switchTab('room');
+            $('login-modal').style.display='none';
+            $('main-app').style.display='flex';
+            $('my-wealth').innerText = d.wealth;
+            tab('room');
         });
-
-        socket.on('roomUpdate', d => {
-            document.getElementById('bj-info').innerText = `ROUND: -/${d.maxRounds}`;
-            renderBjSeats(d.players);
-        });
-
-        function renderBjSeats(players) {
-            const c = document.getElementById('bj-seats'); c.innerHTML = '';
-            players.forEach((p, i) => {
-                const div = document.createElement('div'); div.className = 'bj-seat'; div.id = `seat-${i}`;
-                div.innerHTML = `
-                    <div style="color:${p.color}; font-weight:bold;">${p.username}</div>
-                    <div style="color:var(--gold); font-weight:bold;">${p.score} PTS</div>
-                    <div style="color:#fff; font-size:0.8rem; margin-top:5px;" id="stat-${i}">${p.ready?'READY':''}</div>
-                    <div class="cards" id="hand-${i}"></div>
-                    <div id="ctrl-${i}" style="margin-top:auto; width:100%;"></div>
-                `;
-                c.appendChild(div);
-                if(p.hand) { const h = div.querySelector('.cards'); p.hand.forEach(cd=>h.appendChild(mkCard(cd))); }
-                
-                if(p.id === socket.id && !p.ready && p.hand.length === 0) {
-                    const btn = document.createElement('button'); btn.className = "btn-ready"; btn.innerText = "READY";
-                    btn.onclick = () => socket.emit('bjToggleReady', {room:roomID});
-                    div.querySelector(`#ctrl-${i}`).appendChild(btn);
-                }
-            });
-        }
-        function mkCard(c) {
-            const el = document.createElement('div'); el.className = `card ${['♥','♦'].includes(c.suit)?'red':''}`;
-            if(c.suit==='?') el.className += ' back'; else el.innerText = c.rank + c.suit;
-            return el;
-        }
-        function bet(a) { socket.emit('bjBet', {room:roomID, amount:a}); document.getElementById('bet-ui').style.display='none'; }
-
-        socket.on('bjRoundStart', d => {
-            document.getElementById('bj-info').innerText = `ROUND: ${d.round}/${d.maxRounds}`;
-            document.getElementById('bet-ui').style.display = 'flex';
-            document.getElementById('d-cards').innerHTML = '';
-        });
-        
-        socket.on('bjUpdate', d => {
-            document.getElementById('bet-ui').style.display = 'none';
-            const dc = document.getElementById('d-cards'); dc.innerHTML = ''; d.dealerHand.forEach(c=>dc.appendChild(mkCard(c)));
-            d.players.forEach((p,i) => {
-                const h = document.getElementById(`hand-${i}`); if(h){ h.innerHTML=''; p.hand.forEach(c=>h.appendChild(mkCard(c))); }
-                const st = document.getElementById(`stat-${i}`); if(st) st.innerText = p.status==='playing'?'':p.status;
-                const s = document.getElementById(`seat-${i}`); if(s) {
-                    if(i===d.turnIndex && d.phase==='playing') s.classList.add('active'); else s.classList.remove('active');
-                    const ctrl = document.getElementById(`ctrl-${i}`); ctrl.innerHTML='';
-                    if(p.id===socket.id && i===d.turnIndex && d.phase==='playing') {
-                        ctrl.innerHTML = `<button class="btn-ready" onclick="socket.emit('bjAction',{room:roomID,action:'hit'})">HIT</button> <button class="btn-ready" onclick="socket.emit('bjAction',{room:roomID,action:'stand'})">STAND</button>`;
-                    }
-                }
-            });
-        });
-
-        socket.on('bjRoundOver', d => {
-             const dc = document.getElementById('d-cards'); dc.innerHTML = ''; d.dealerHand.forEach(c=>dc.appendChild(mkCard(c)));
-             d.players.forEach((p,i) => {
-                 const st = document.getElementById(`stat-${i}`); if(st) { st.innerText = p.result; st.style.color = p.result.includes('WIN')?'#0f0':'#f00'; }
-                 const s = document.getElementById(`seat-${i}`); if(s) s.children[1].innerText = `${p.score} PTS`;
-             });
-             document.getElementById('sys-msg-overlay').innerText = d.isMatchOver ? "MATCH COMPLETE" : "ROUND END";
-        });
-        
-        socket.on('gameOver', d => { alert(d.msg); location.reload(); });
-        socket.on('forceReset', () => location.reload());
         socket.on('error', m => alert(m));
+
+        // --- ROUTING ---
+        socket.on('roomUpdate', d => {
+            if(d.gameType==='uno') {
+                $('uno-table').style.display='block'; $('bj-table').style.display='none';
+                renderUnoLobby(d.players);
+            } else {
+                $('uno-table').style.display='none'; $('bj-table').style.display='flex';
+                renderBjLobby(d.players);
+            }
+        });
+
+        // --- UNO UI ---
+        function renderUnoLobby(players) {
+            const my = players.find(p=>p.username===myUser);
+            if(!my) return;
+            if(!my.ready && (!my.unoHand || my.unoHand.length===0)) {
+                $('sys-msg').innerHTML = `<button onclick="socket.emit('toggleReady',{room:roomID})" style="font-size:1.5rem; padding:15px 40px; background:var(--accent);">READY TO START?</button>`;
+            } else {
+                $('sys-msg').innerHTML = "WAITING FOR OTHERS...";
+            }
+        }
+
+        socket.on('unoUpdate', d => {
+            // Update Opponents
+            const ops = d.players.filter(p => p.username !== myUser);
+            $('uno-opponents').innerHTML = ops.map(p => `
+                <div class="opp-card ${p.isTurn?'turn':''} ${p.isCpu?'cpu':''}">
+                    <div style="font-weight:bold; color:${p.color}">${p.username}</div>
+                    <div style="font-size:2rem; font-weight:bold;">${p.handCount}</div>
+                    <div style="font-size:0.7rem; color:#aaa;">CARDS</div>
+                </div>
+            `).join('');
+
+            // Pile
+            const top = d.topCard;
+            let typeDisp = top.type;
+            if(typeDisp==='draw2') typeDisp='+2'; if(typeDisp==='draw4') typeDisp='+4';
+            if(typeDisp==='wild') typeDisp='W'; if(typeDisp==='skip') typeDisp='⊘'; if(typeDisp==='reverse') typeDisp='⇄';
+            
+            const colorClass = `u-${d.currentColor}`;
+            $('uno-pile').innerHTML = `<div class="uno-card ${colorClass}">${typeDisp.toUpperCase()}</div>`;
+            $('uno-bg').className = `current-bg ${colorClass}`;
+
+            // My Hand
+            $('uno-hand').innerHTML = d.myHand.map((c, i) => {
+                let disp = c.type;
+                if(disp==='draw2') disp='+2'; if(disp==='draw4') disp='+4'; if(disp==='wild') disp='W';
+                if(disp==='skip') disp='⊘'; if(disp==='reverse') disp='⇄';
+                const cc = (c.color==='black') ? 'u-black' : `u-${c.color}`;
+                return `<div class="uno-card ${cc}" onclick="tryPlayUno(${i}, '${c.type}')" style="font-size:${disp.length>1?'1.5rem':'2.5rem'}">${disp.toUpperCase()}</div>`;
+            }).join('');
+
+            if(d.isMyTurn) $('sys-msg').innerText = "YOUR TURN";
+            else $('sys-msg').innerText = "";
+        });
+
+        function tryPlayUno(idx, type) {
+            if(type === 'wild' || type === 'draw4') {
+                pendingCardIndex = idx;
+                $('color-picker').style.display = 'flex';
+            } else {
+                socket.emit('unoMove', { room:roomID, cardIndex:idx, colorChoice:null });
+            }
+        }
+        function pickColor(c) {
+            $('color-picker').style.display = 'none';
+            socket.emit('unoMove', { room:roomID, cardIndex:pendingCardIndex, colorChoice:c });
+        }
+
+        // --- BJ UI ---
+        function renderBjLobby(players) {
+            $('bj-seats').innerHTML = players.map((p,i) => `
+                <div style="text-align:center; padding:15px; background:rgba(0,0,0,0.3); border-radius:16px; min-width:120px; border:1px solid rgba(255,255,255,0.1);">
+                    <div style="color:${p.color}; font-weight:bold; margin-bottom:5px;">${p.username}</div>
+                    <div style="font-size:1.2rem;">${p.score}</div>
+                    <div id="h-${i}" class="bj-cards" style="transform:scale(0.7); margin-top:-10px;"></div>
+                    ${p.username===myUser && !p.ready && p.hand.length===0 ? `<button onclick="socket.emit('toggleReady',{room:roomID})" style="margin-top:10px;">READY</button>` : ''}
+                    <div id="act-${i}" style="margin-top:10px;"></div>
+                </div>
+            `).join('');
+        }
+
+        function updateBet(v) { $('bet-val').innerText = v; }
+        function placeBet() { socket.emit('placeBet', {room:roomID, amount:$('bet-slider').value}); $('bet-overlay').style.display='none'; }
+
+        socket.on('bjRoundStart', d => { $('bet-overlay').style.display='flex'; $('d-hand').innerHTML=''; });
+        socket.on('ovRoundStart', d => { $('bet-overlay').style.display='flex'; $('d-hand').innerHTML=''; });
+
+        socket.on('bjUpdate', d => updateCardGame(d, 'bj'));
+        socket.on('ovUpdate', d => updateCardGame(d, 'ov'));
+
+        function updateCardGame(d, type) {
+            $('bet-overlay').style.display='none';
+            const dc = d.dealerHand || (d.dealerCard ? [d.dealerCard] : []);
+            $('d-hand').innerHTML = dc.map(c => mkCard(c)).join('');
+            
+            d.players.forEach((p,i) => {
+                const div = $(`h-${i}`); 
+                if(div) div.innerHTML = p.hand.map(c => mkCard(c)).join('');
+                
+                const act = $(`act-${i}`);
+                if(act && p.username===myUser && i===d.turnIndex && d.phase==='playing') {
+                    if(type==='bj') act.innerHTML = `<button onclick="socket.emit('bjAction',{room:roomID,action:'hit'})">HIT</button> <button onclick="socket.emit('bjAction',{room:roomID,action:'stand'})">STAND</button>`;
+                    if(type==='ov') act.innerHTML = `<button onclick="socket.emit('ovAction',{room:roomID,choice:'high'})">HIGH</button> <button onclick="socket.emit('ovAction',{room:roomID,choice:'low'})">LOW</button>`;
+                } else if(act) act.innerHTML = "";
+            });
+        }
+
+        function mkCard(c) {
+            if(!c.val && !c.power) return ``;
+            const color = ['♥','♦'].includes(c.suit) ? 'red' : 'black';
+            return `<div class="bj-card ${color}">${c.rank}<br><span style="font-size:2rem">${c.suit}</span></div>`;
+        }
+
+        socket.on('gameOver', d => { alert(d.msg); location.reload(); });
 
     </script>
 </body>
