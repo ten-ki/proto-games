@@ -186,7 +186,7 @@ io.on('connection', (socket) => {
     socket.on('ovAction', ({ room, choice }) => handleOvAction(room, socket.id, choice));
     
     // UNO ACTIONS
-    socket.on('unoMove', (d) => processUnoMove(room, socket.id, d.cardIndex, d.colorChoice));
+    socket.on('unoMove', (d) => processUnoMove(d.room, socket.id, d.cardIndex, d.colorChoice));
     socket.on('unoDraw', ({ room }) => processUnoDraw(room, socket.id));
 });
 
@@ -284,7 +284,7 @@ function drawCards(r, p, count) {
     }
 }
 
-function advanceUnoTurn(room) { r = rooms[room]; r.unoTurn = getNextTurn(r); updateUnoState(room); checkCpuTurn(room); }
+function advanceUnoTurn(room) { const r = rooms[room]; r.unoTurn = getNextTurn(r); updateUnoState(room); checkCpuTurn(room); }
 function getNextTurn(r) { return (r.unoTurn + r.unoDirection + r.players.length) % r.players.length; }
 function checkCpuTurn(room) { const r = rooms[room]; if(!r.gameActive) return; const p = r.players[r.unoTurn]; if(p.isCpu) setTimeout(() => runCpuLogic(room, p), 1500); }
 
