@@ -81,6 +81,17 @@ io.on('connection', (socket) => {
     socket.on('joinRoom', ({ username, room, gameType, buyInAmount }) => {
         if(!username || !room) return socket.emit('error', 'INVALID INPUT');
 
+        // DB Init
+        if(!userDB[username]) userDB[username] = { totalWealth: INITIAL_WEALTH, cumulativeScore: 0 };
+        
+        // 救済措置（エラーではなくフラグとして処理）
+        let reliefApplied = false;
+        if(userDB[username].totalWealth < RELIEF_THRESHOLD) {
+            userDB[username].totalWealth = RELIEF_AMOUNT;
+            reliefApplied = true;
+        }
+
+        // 部屋作成
         if(!rooms[room]) {
             rooms[room] = {
                 gameType, players: [], gameActive: false,
@@ -91,23 +102,13 @@ io.on('connection', (socket) => {
         }
         const r = rooms[room];
 
-        // 同名ユーザーがいたら強制退室（幽霊対策）
+        // 幽霊ユーザー削除
         const duplicateIdx = r.players.findIndex(p => p.username === username);
-        if(duplicateIdx !== -1) {
-            r.players.splice(duplicateIdx, 1);
-        }
+        if(duplicateIdx !== -1) r.players.splice(duplicateIdx, 1);
 
         if(r.players.length >= 6) return socket.emit('error', 'ROOM FULL');
-        
-        // DB Init & Relief Check
-        if(!userDB[username]) userDB[username] = { totalWealth: INITIAL_WEALTH, cumulativeScore: 0 };
-        
-        let reliefApplied = false;
-        if(userDB[username].totalWealth < RELIEF_THRESHOLD) {
-            userDB[username].totalWealth = RELIEF_AMOUNT;
-            reliefApplied = true;
-        }
 
+        // バイイン処理
         let fee = parseInt(buyInAmount);
         if(isNaN(fee) || fee < 100) fee = 100;
         if(userDB[username].totalWealth < fee) return socket.emit('error', 'INSUFFICIENT FUNDS');
@@ -123,9 +124,16 @@ io.on('connection', (socket) => {
         
         socket.join(room);
         
-        // 入室成功通知
+        // ★重要: ここでクライアントに必要な全情報を送る
         const me = r.players.find(p=>p.id===socket.id);
-        socket.emit('joined', { color: me.color, mySeat: r.players.indexOf(me), wealth: userDB[username].totalWealth, relief: reliefApplied });
+        socket.emit('joined', { 
+            color: me.color, 
+            mySeat: r.players.indexOf(me), 
+            wealth: userDB[username].totalWealth, 
+            relief: reliefApplied 
+        });
+        
+        // 即座にルーム更新を送信
         io.to(room).emit('roomUpdate', { players: r.players, gameType: r.gameType, maxRounds: r.maxRounds });
         io.emit('rankingUpdate', getRankingData());
     });
@@ -144,11 +152,10 @@ io.on('connection', (socket) => {
                 }
                 r.players.splice(idx,1);
                 
-                // 人間がいなくなったら部屋削除
                 if(!r.players.some(pl => !pl.isCpu)) {
                     delete rooms[rid];
                 } else {
-                    r.gameActive = false; // 中断
+                    r.gameActive = false;
                     r.players = r.players.filter(pl => !pl.isCpu);
                     r.players.forEach(pl => pl.ready = false);
                     io.to(rid).emit('roomUpdate', { players: r.players, gameType: r.gameType });
@@ -159,7 +166,6 @@ io.on('connection', (socket) => {
         }
     }
 
-    // --- GAME CONTROL ---
     socket.on('toggleReady', ({ room }) => {
         const r = rooms[room];
         if(!r || r.gameActive) return;
@@ -169,12 +175,10 @@ io.on('connection', (socket) => {
             io.to(room).emit('roomUpdate', { players: r.players, gameType: r.gameType });
             if(r.players.length > 0 && r.players.every(pl => pl.ready)) {
                 if(r.gameType === 'uno') {
-                    while(r.players.length < 4) { // CPU追加
+                    while(r.players.length < 4) { 
                         r.players.push({
-                            id: `cpu-${Date.now()}-${Math.random()}`,
-                            username: `CPU ${r.players.length+1}`,
-                            color: '#AAAAAA', isCpu: true, ready: true,
-                            score: 1000, initialScore: 1000, unoHand: []
+                            id: `cpu-${Date.now()}-${Math.random()}`, username: `CPU ${r.players.length+1}`,
+                            color: '#AAAAAA', isCpu: true, ready: true, score: 1000, initialScore: 1000, unoHand: []
                         });
                     }
                     io.to(room).emit('roomUpdate', { players: r.players, gameType: 'uno' });
@@ -353,6 +357,5 @@ function endMatch(room) {
     r.players.forEach(p=>p.ready=false);
 }
 
-// ★ Renderタイムアウト対策
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, '0.0.0.0', () => console.log(`Server running on port ${PORT}`));
