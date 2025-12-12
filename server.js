@@ -187,6 +187,7 @@ io.on('connection', (socket) => {
     
     // UNO ACTIONS
     socket.on('unoMove', (d) => processUnoMove(d.room, socket.id, d.cardIndex, d.colorChoice));
+    socket.on('unoMultiMove', (d) => processUnoMultiMove(d.room, socket.id, d.cardIds || [], d.colorChoices || []));
     socket.on('unoDraw', ({ room }) => processUnoDraw(room, socket.id));
 });
 
@@ -214,6 +215,7 @@ function startUnoMatch(room) {
     r.players.forEach(p => { 
         p.unoHand = []; 
         for(let i=0; i<7; i++) p.unoHand.push(r.unoDeck.pop()); 
+        p.hasDrawnThisTurn = false;
     });
     
     updateUnoState(room);
@@ -244,17 +246,14 @@ function processUnoMove(room, playerId, cardIndex, colorChoice) {
     p.unoHand.splice(cardIndex, 1);
     r.unoPile.push(card);
 
-    // If a number card was played, allow playing all other cards with the same number/type at once
+    // If a number card was played, allow automatic additional matching-number cards (server-side fallback)
     if (/^\d+$/.test(card.type)) {
-        // iterate and remove any matching-number cards from hand and push to pile
         let i = 0;
         while (i < p.unoHand.length) {
             if (p.unoHand[i].type === card.type) {
                 const extra = p.unoHand.splice(i, 1)[0];
                 r.unoPile.push(extra);
-            } else {
-                i++;
-            }
+            } else i++;
         }
     }
     
@@ -281,14 +280,79 @@ function processUnoMove(room, playerId, cardIndex, colorChoice) {
         r.players.forEach(pl => pl.ready = false);
         return;
     }
-    
+    // reset draw flag when a play happens
+    p.hasDrawnThisTurn = false;
+
     advanceUnoTurn(room);
+}
+
+// Process multiple cards played at once (cardIds array, colorChoices parallel array)
+function processUnoMultiMove(room, playerId, cardIds, colorChoices) {
+    const r = rooms[room]; if(!r || !r.gameActive) return;
+    const p = r.players[r.unoTurn]; if(p.id !== playerId) return;
+
+    // Play each card in the specified order; find by id in current hand
+    for (let idx = 0; idx < cardIds.length; idx++) {
+        const cid = cardIds[idx];
+        const colorChoice = Array.isArray(colorChoices) ? colorChoices[idx] : undefined;
+        const i = p.unoHand.findIndex(c => String(c.id) === String(cid));
+        if (i === -1) continue; // missing or already played
+
+        const card = p.unoHand.splice(i, 1)[0];
+        r.unoPile.push(card);
+
+        if (card.color === 'black') r.unoColor = colorChoice || 'red';
+        else r.unoColor = card.color;
+
+        // Apply effects sequentially (draw stack, reverse, skip)
+        if (card.type === 'skip') r.unoTurn = getNextTurn(r);
+        else if (card.type === 'reverse') { if(r.players.length===2) r.unoTurn = getNextTurn(r); else r.unoDirection *= -1; }
+        else if (card.type === 'draw2') r.unoDrawStack += 2;
+        else if (card.type === 'draw4') r.unoDrawStack += 4;
+    }
+
+    // Win check
+    if (p.unoHand.length === 0) {
+        let pool = 0;
+        r.players.forEach(pl => { 
+            if(pl !== p) { let pen = 200; if(pl.score >= pen) { pl.score -= pen; pool += pen; } else { pool += pl.score; pl.score = 0; } } 
+        });
+        p.score += pool;
+        io.to(room).emit('gameOver', { winner: p.color, msg: `WINNER: ${p.username} (+${pool})` });
+        r.gameActive = false;
+        r.players = r.players.filter(pl => !pl.isCpu);
+        r.players.forEach(pl => pl.ready = false);
+        return;
+    }
+
+    // Advance turn once after batch
+    r.unoTurn = getNextTurn(r);
+    updateUnoState(room);
+    checkCpuTurn(room);
 }
 
 function processUnoDraw(room, playerId) {
     const r = rooms[room]; const p = r.players[r.unoTurn]; if(p.id !== playerId) return;
-    if(r.unoDrawStack > 0) { drawCards(r, p, r.unoDrawStack); r.unoDrawStack = 0; advanceUnoTurn(room); }
-    else { drawCards(r, p, 1); updateUnoState(room); if(p.isCpu) setTimeout(() => cpuTryPlayAfterDraw(room, p), 1000); }
+    if(r.unoDrawStack > 0) {
+        drawCards(r, p, r.unoDrawStack);
+        r.unoDrawStack = 0;
+        // drawing from stack counts as action and ends turn
+        p.hasDrawnThisTurn = true;
+        advanceUnoTurn(room);
+        return;
+    }
+
+    // Prevent repeated manual draws within the same turn
+    if(p.hasDrawnThisTurn) {
+        io.to(playerId).emit('error', '既にドローしました');
+        return;
+    }
+
+    // Normal single draw
+    drawCards(r, p, 1);
+    p.hasDrawnThisTurn = true;
+    updateUnoState(room);
+    if(p.isCpu) setTimeout(() => cpuTryPlayAfterDraw(room, p), 1000);
 }
 
 function drawCards(r, p, count) {
@@ -298,7 +362,10 @@ function drawCards(r, p, count) {
     }
 }
 
-function advanceUnoTurn(room) { const r = rooms[room]; r.unoTurn = getNextTurn(r); updateUnoState(room); checkCpuTurn(room); }
+function advanceUnoTurn(room) { const r = rooms[room]; r.unoTurn = getNextTurn(r);
+    // reset draw flag for the new current player
+    r.players.forEach(pl => pl.hasDrawnThisTurn = false);
+    updateUnoState(room); checkCpuTurn(room); }
 function getNextTurn(r) { return (r.unoTurn + r.unoDirection + r.players.length) % r.players.length; }
 function checkCpuTurn(room) { const r = rooms[room]; if(!r.gameActive) return; const p = r.players[r.unoTurn]; if(p.isCpu) setTimeout(() => runCpuLogic(room, p), 1500); }
 

@@ -265,6 +265,8 @@
     <script>
         const socket = io();
         let roomID='', myUser='', pendingI=-1, myTurn=false;
+        let selectedCards = []; // array of card ids (or indexes as string) selected for bulk play
+        let selectedColorChoices = {}; // map cardId -> color for wilds
         const $ = id => document.getElementById(id);
 
         // CHAT
@@ -328,10 +330,12 @@
             $('color-ring').className = `color-ring ring-${d.currentColor}`;
 
             $('uno-hand').innerHTML = d.myHand.map((c, i) => {
+                const cid = c.id || `${i}`;
+                const isSelected = selectedCards.includes(String(cid));
                 const ccc = c.color==='black'?'u-black':`u-${c.color}`;
                 const t = formatUnoText(c.type);
                 const long = t.length > 1 ? 'long-text' : '';
-                return `<div class="hand-card-wrapper"><div id="card-${i}" class="uno-card ${ccc} ${long}" onclick="tryPlay(${i},'${c.type}')"><span>${t}</span></div></div>`;
+                return `<div class="hand-card-wrapper"><div data-id="${cid}" id="card-${i}" class="uno-card ${ccc} ${long} ${isSelected?'selected':''}" onclick="toggleSelect('${cid}','${c.type}',${i})"><span>${t}</span></div></div>`;
             }).join('');
             
             if(d.isMyTurn) $('sys-msg').innerText = "YOUR TURN";
@@ -347,15 +351,42 @@
             return type.toUpperCase();
         }
 
-        function tryPlay(i, type) {
-            if(!myTurn) return; // Not your turn
-            
-            // Server will validate, but we can do visual feedback
-            if(type==='wild'||type==='draw4') {
-                pendingI = i; $('color-picker').style.display='flex';
+        function toggleSelect(cardId, type, index) {
+            if(!myTurn) return;
+            cardId = String(cardId);
+            const pos = selectedCards.indexOf(cardId);
+            if(pos !== -1) {
+                selectedCards.splice(pos, 1);
+                delete selectedColorChoices[cardId];
             } else {
-                socket.emit('unoMove', {room:roomID, cardIndex:i});
+                if(type === 'wild' || type === 'draw4') {
+                    // need color choice before adding
+                    pendingI = cardId;
+                    $('color-picker').style.display = 'flex';
+                } else {
+                    selectedCards.push(cardId);
+                }
             }
+            refreshHandSelection();
+            refreshEndTurnButton();
+        }
+
+        function refreshHandSelection() {
+            // update DOM classes
+            const wrappers = document.querySelectorAll('#uno-hand [data-id]');
+            wrappers.forEach(el => {
+                const id = String(el.getAttribute('data-id'));
+                el.classList.toggle('selected', selectedCards.includes(id));
+            });
+        }
+
+        function refreshEndTurnButton() {
+            const btn = document.getElementById('end-turn-btn');
+            if(myTurn && selectedCards.length>0) {
+                if(!btn) {
+                    const b = document.createElement('button'); b.id='end-turn-btn'; b.innerText='END TURN'; b.onclick = endTurnPlay; document.getElementById('sys-msg').appendChild(b);
+                }
+            } else if(btn) btn.remove();
         }
         
         // Invalid Move Feedback (Optional if server rejects silently, users might be confused)
@@ -364,7 +395,29 @@
         // サーバーが弾いた場合のエラーイベントがあれば良いですが、
         // 今回は「タップ時のアニメーション」で反応したことを伝えます。
         
-        function pickColor(c) { $('color-picker').style.display='none'; socket.emit('unoMove', {room:roomID, cardIndex:pendingI, colorChoice:c}); }
+        function pickColor(c) { 
+            $('color-picker').style.display='none';
+            if(pendingI === -1) return;
+            // If pendingI is an index (number) from older flow, keep backward compatibility
+            if(typeof pendingI === 'number') {
+                socket.emit('unoMove', {room:roomID, cardIndex:pendingI, colorChoice:c});
+            } else {
+                // pendingI is cardId string for selection
+                const cid = String(pendingI);
+                selectedColorChoices[cid] = c;
+                if(!selectedCards.includes(cid)) selectedCards.push(cid);
+                pendingI = -1;
+                refreshHandSelection(); refreshEndTurnButton();
+            }
+        }
+
+        function endTurnPlay() {
+            if(!myTurn || selectedCards.length===0) return;
+            const colorChoices = selectedCards.map(id => selectedColorChoices[id] || null);
+            socket.emit('unoMultiMove', { room: roomID, cardIds: selectedCards.slice(), colorChoices });
+            // clear selection
+            selectedCards = []; selectedColorChoices = {}; refreshHandSelection(); refreshEndTurnButton();
+        }
 
         // BJ (Minified)
         function renderBjLobby(ps) { $('bj-seats').innerHTML=ps.map((p,i)=>`<div style="text-align:center; min-width:80px;"><div style="color:${p.color}">${p.username}</div><div>${p.score}</div><div id="h-${i}" class="bj-cards" style="transform:scale(0.8)"></div>${p.username===myUser&&!p.ready&&p.hand.length===0?`<button onclick="socket.emit('toggleReady',{room:roomID})" style="font-size:0.8rem; padding:5px;">READY</button>`:''}<div id="act-${i}"></div></div>`).join(''); }
