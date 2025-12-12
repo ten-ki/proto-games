@@ -45,7 +45,7 @@
             overflow: hidden; box-shadow: 0 20px 50px rgba(0,0,0,0.3);
         }
 
-        h1 { position: absolute; top: 25px; left: 35px; margin: 0; font-weight: 700; letter-spacing: 2px; background: linear-gradient(to right, #00f260, #0575E6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        h1 { position: absolute; top: 25px; left: 35px; margin: 0; font-weight: 700; letter-spacing: 2px; background: linear-gradient(to right, #00f260, #0575E6); background-clip: text; -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
         
         button {
             background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2);
@@ -243,4 +243,35 @@
 
         function joinGame() {
             const b = $('join-btn'); b.disabled = true; b.innerText = "CONNECTING..."; // 連打防止
-            myUser = $('username').value || 'GUEST'; roomID = $('
+            myUser = $('username').value.trim() || 'GUEST';
+            roomID = $('room').value.trim();
+            const gameType = $('gameType').value;
+            if (!roomID) {
+                alert('Room ID を入力してください');
+                b.disabled = false; b.innerText = 'ENTER SYSTEM';
+                return;
+            }
+
+            // 入室要求
+            socket.emit('joinRoom', { username: myUser, room: roomID, game: gameType });
+
+            // UI 切替
+            document.getElementById('login-modal').style.display = 'none';
+            document.getElementById('main-app').style.display = 'flex';
+        }
+
+        // シンプルなユーティリティ
+        function pickColor(c) { document.getElementById('color-picker').style.display = 'none'; socket.emit('pickColor', { room: roomID, color: c }); }
+        function updateBet(v) { document.getElementById('bet-val').innerText = v; }
+        function placeBet() { const v = document.getElementById('bet-slider').value; socket.emit('placeBet', { room: roomID, amount: Number(v) }); document.getElementById('bet-overlay').style.display = 'none'; }
+
+        // サーバーからの簡易イベントハンドラ
+        socket.on('waiting', msg => { document.getElementById('sys-msg').innerText = msg; });
+        socket.on('playerColor', color => { myColor = color; });
+        socket.on('gameStart', data => { document.getElementById('sys-msg').innerText = 'Game started'; });
+
+        // 保険: socket が切断されたらログに通知
+        socket.on('disconnect', () => { document.getElementById('sys-msg').innerText = 'Disconnected from server'; });
+    </script>
+</body>
+</html>

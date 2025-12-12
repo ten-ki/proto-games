@@ -91,7 +91,7 @@ io.on('connection', (socket) => {
         }
         const r = rooms[room];
 
-        // ★修正: 同じ名前のユーザーがいたら強制退室させる（幽霊対策）
+        // 同名ユーザーがいたら強制退室（幽霊対策）
         const duplicateIdx = r.players.findIndex(p => p.username === username);
         if(duplicateIdx !== -1) {
             r.players.splice(duplicateIdx, 1);
@@ -353,5 +353,6 @@ function endMatch(room) {
     r.players.forEach(p=>p.ready=false);
 }
 
+// ★ Renderタイムアウト対策
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+server.listen(PORT, '0.0.0.0', () => console.log(`Server running on port ${PORT}`));
