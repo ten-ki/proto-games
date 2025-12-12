@@ -10,7 +10,7 @@ const io = new Server(server);
 app.use(express.static(path.join(__dirname, 'public')));
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
-// --- DATABASE (MEMORY) ---
+// --- DATABASE & CONFIG ---
 let userDB = {}; 
 let rooms = {};
 let globalChatLogs = [];
@@ -19,15 +19,15 @@ const INITIAL_WEALTH = 3000;
 const RELIEF_THRESHOLD = 100;
 const RELIEF_AMOUNT = 1000;
 
-// --- COMMON CONFIG ---
 setInterval(() => {
     const cut = Date.now() - LOG_RETENTION;
     globalChatLogs = globalChatLogs.filter(l => l.timestamp > cut);
 }, 60000);
 
-// --- HELPERS ---
+// --- UNO HELPERS ---
 const UNO_COLORS = ['red', 'yellow', 'green', 'blue'];
 const UNO_VALUES = ['0','1','2','3','4','5','6','7','8','9','skip','reverse','draw2'];
+
 function createUnoDeck() {
     let deck = [];
     for(let c of UNO_COLORS) {
@@ -43,6 +43,7 @@ function createUnoDeck() {
     return shuffle(deck);
 }
 
+// --- BJ HELPERS ---
 const SUITS = ['♠', '♥', '♦', '♣'];
 const RANKS = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
 function createBjDeck() {
@@ -97,15 +98,10 @@ io.on('connection', (socket) => {
         if(r.players.length >= 6) return socket.emit('error', 'ROOM FULL');
         
         if(!userDB[username]) userDB[username] = { totalWealth: INITIAL_WEALTH, cumulativeScore: 0 };
-        
-        let reliefApplied = false;
-        if(userDB[username].totalWealth < RELIEF_THRESHOLD) {
-            userDB[username].totalWealth = RELIEF_AMOUNT;
-            reliefApplied = true;
-        }
+        let relief = false;
+        if(userDB[username].totalWealth < RELIEF_THRESHOLD) { userDB[username].totalWealth = RELIEF_AMOUNT; relief = true; }
 
-        let fee = parseInt(buyInAmount);
-        if(isNaN(fee) || fee < 100) fee = 100;
+        let fee = parseInt(buyInAmount); if(isNaN(fee)||fee<100) fee=100;
         if(userDB[username].totalWealth < fee) return socket.emit('error', 'INSUFFICIENT FUNDS');
         userDB[username].totalWealth -= fee;
 
@@ -118,15 +114,8 @@ io.on('connection', (socket) => {
         r.players.push(newPlayer);
         
         socket.join(room);
-        
-        const me = r.players.find(p=>p.id===socket.id);
-        socket.emit('joined', { 
-            color: me.color, 
-            mySeat: r.players.indexOf(me), 
-            wealth: userDB[username].totalWealth, 
-            relief: reliefApplied 
-        });
-        
+        const me = r.players.find(pl=>pl.id===socket.id);
+        socket.emit('joined', { color: me.color, mySeat: r.players.indexOf(me), wealth: userDB[username].totalWealth, relief });
         io.to(room).emit('roomUpdate', { players: r.players, gameType: r.gameType, maxRounds: r.maxRounds });
         io.emit('rankingUpdate', getRankingData());
     });
@@ -144,10 +133,8 @@ io.on('connection', (socket) => {
                     userDB[p.username].cumulativeScore += (p.score - p.initialScore);
                 }
                 r.players.splice(idx,1);
-                
-                if(!r.players.some(pl => !pl.isCpu)) {
-                    delete rooms[rid];
-                } else {
+                if(!r.players.some(pl => !pl.isCpu)) delete rooms[rid];
+                else {
                     r.gameActive = false;
                     r.players = r.players.filter(pl => !pl.isCpu);
                     r.players.forEach(pl => pl.ready = false);
@@ -165,23 +152,18 @@ io.on('connection', (socket) => {
         const p = r.players.find(pl => pl.id === socket.id);
         if(p) {
             p.ready = !p.ready;
-            
-            // 通知: 誰がReadyしたか
             io.to(room).emit('roomUpdate', { players: r.players, gameType: r.gameType });
-
+            
             if(r.players.length > 0 && r.players.every(pl => pl.ready)) {
                 if(r.gameType === 'uno') {
-                    // CPU追加ロジック
+                    // CPU追加
                     while(r.players.length < 4) { 
                         r.players.push({
                             id: `cpu-${Date.now()}-${Math.random()}`, username: `CPU ${r.players.length+1}`,
                             color: '#AAAAAA', isCpu: true, ready: true, score: 1000, initialScore: 1000, unoHand: []
                         });
                     }
-                    // CPU追加後の状態を一度クライアントに同期
                     io.to(room).emit('roomUpdate', { players: r.players, gameType: 'uno' });
-                    
-                    // 少し待ってから開始（画面反映のため）
                     setTimeout(() => startUnoMatch(room), 500);
                 }
                 else if(r.gameType === 'blackjack') startBjMatch(room);
@@ -216,34 +198,47 @@ function getRankingData() {
 }
 function sendRanking(socket) { socket.emit('rankingUpdate', getRankingData()); }
 
-// --- UNO LOGIC ---
+// ==========================================
+// UNO LOGIC
+// ==========================================
+// カードが出せるか判定
+function canPlayUnoCard(r, card) {
+    const top = r.unoPile[r.unoPile.length-1];
+    if(!top || !card) return false;
+
+    if(r.unoDrawStack > 0) {
+        if(top.type === 'draw2' && card.type === 'draw2') return true;
+        if(top.type === 'draw4' && card.type === 'draw4') return true;
+        return false;
+    }
+    
+    if(card.color === 'black') return true;
+    if(card.color === r.unoColor) return true;
+    if(card.type === top.type) return true;
+    
+    return false;
+}
+
 function startUnoMatch(room) {
     const r = rooms[room];
     r.gameActive = true;
     r.unoDeck = createUnoDeck();
     r.unoPile = [r.unoDeck.pop()];
     
-    // 初期カードがワイルドなら引き直し
     while(r.unoPile[0].color === 'black') { 
         r.unoDeck.unshift(r.unoPile.pop()); 
         r.unoDeck = shuffle(r.unoDeck); 
         r.unoPile = [r.unoDeck.pop()]; 
     }
     
-    r.unoTurn = 0; 
-    r.unoDirection = 1; 
-    r.unoDrawStack = 0; 
-    r.unoColor = r.unoPile[0].color;
+    r.unoTurn = 0; r.unoDirection = 1; r.unoDrawStack = 0; r.unoColor = r.unoPile[0].color;
     
-    // 手札配布
     r.players.forEach(p => { 
         p.unoHand = []; 
         for(let i=0; i<7; i++) p.unoHand.push(r.unoDeck.pop()); 
     });
     
     updateUnoState(room);
-    
-    // 初手がCPUなら思考開始
     checkCpuTurn(room);
 }
 
@@ -252,17 +247,12 @@ function processUnoMove(room, playerId, cardIndex, colorChoice) {
     const p = r.players[r.unoTurn]; if(p.id !== playerId) return;
     
     const card = p.unoHand[cardIndex]; 
-    const top = r.unoPile[r.unoPile.length-1];
     
-    let isValid = false;
-    if(r.unoDrawStack > 0) {
-        if(top.type === 'draw2' && card.type === 'draw2') isValid = true;
-        else if(top.type === 'draw4' && card.type === 'draw4') isValid = true;
-    } else {
-        if(card.color === 'black' || card.color === r.unoColor || card.type === top.type) isValid = true;
+    if(!canPlayUnoCard(r, card)) {
+        // CPUが間違った手を出そうとしたらドローさせる
+        if(p.isCpu) processUnoDraw(room, playerId);
+        return;
     }
-    
-    if(!isValid) return;
     
     p.unoHand.splice(cardIndex, 1); 
     r.unoPile.push(card); 
@@ -295,14 +285,10 @@ function processUnoMove(room, playerId, cardIndex, colorChoice) {
 }
 
 function processUnoDraw(room, playerId) {
-    const r = rooms[room]; 
-    const p = r.players[r.unoTurn]; 
-    if(p.id !== playerId) return;
+    const r = rooms[room]; const p = r.players[r.unoTurn]; if(p.id !== playerId) return;
     
     if(r.unoDrawStack > 0) { 
-        drawCards(r, p, r.unoDrawStack); 
-        r.unoDrawStack = 0; 
-        advanceUnoTurn(room); 
+        drawCards(r, p, r.unoDrawStack); r.unoDrawStack = 0; advanceUnoTurn(room); 
     } else { 
         drawCards(r, p, 1); 
         updateUnoState(room); 
@@ -313,67 +299,41 @@ function processUnoDraw(room, playerId) {
 function drawCards(r, p, count) {
     for(let i=0; i<count; i++) {
         if(r.unoDeck.length === 0) { 
-            const top = r.unoPile.pop(); 
-            r.unoDeck = shuffle(r.unoPile); 
-            r.unoPile = [top]; 
+            const top = r.unoPile.pop(); r.unoDeck = shuffle(r.unoPile); r.unoPile = [top]; 
         }
         if(r.unoDeck.length > 0) p.unoHand.push(r.unoDeck.pop());
     }
 }
 
 function advanceUnoTurn(room) { 
-    r = rooms[room]; 
-    r.unoTurn = getNextTurn(r); 
-    updateUnoState(room); 
-    checkCpuTurn(room); 
+    r = rooms[room]; r.unoTurn = getNextTurn(r); updateUnoState(room); checkCpuTurn(room); 
 }
 
-function getNextTurn(r) { 
-    return (r.unoTurn + r.unoDirection + r.players.length) % r.players.length; 
-}
+function getNextTurn(r) { return (r.unoTurn + r.unoDirection + r.players.length) % r.players.length; }
 
 function checkCpuTurn(room) { 
-    const r = rooms[room]; 
-    if(!r.gameActive) return; 
+    const r = rooms[room]; if(!r.gameActive) return; 
     const p = r.players[r.unoTurn]; 
     if(p.isCpu) setTimeout(() => runCpuLogic(room, p), 1500); 
 }
 
 function runCpuLogic(room, p) {
     const r = rooms[room]; if(!r.gameActive) return;
-    const top = r.unoPile[r.unoPile.length-1];
     
-    // CPU Strategy
-    let validIdx = -1;
-    let chosenColor = 'red';
-    
-    // Decide color based on hand
     const counts = {red:0, blue:0, green:0, yellow:0};
     p.unoHand.forEach(c => { if(c.color!=='black') counts[c.color]++; });
-    chosenColor = Object.keys(counts).reduce((a, b) => counts[a] > counts[b] ? a : b);
+    const chosenColor = Object.keys(counts).reduce((a, b) => counts[a] > counts[b] ? a : b);
 
-    if(r.unoDrawStack > 0) {
-        validIdx = p.unoHand.findIndex(c => (top.type==='draw2'&&c.type==='draw2') || (top.type==='draw4'&&c.type==='draw4'));
-    } else {
-        validIdx = p.unoHand.findIndex(c => c.color!=='black' && (c.color===r.unoColor || c.type===top.type));
-        if(validIdx === -1) validIdx = p.unoHand.findIndex(c => c.color==='black');
-    }
+    let validIdx = p.unoHand.findIndex(c => canPlayUnoCard(r, c));
     
     if(validIdx !== -1) processUnoMove(room, p.id, validIdx, chosenColor); 
     else processUnoDraw(room, p.id);
 }
 
 function cpuTryPlayAfterDraw(room, p) {
-    const r = rooms[room]; 
-    const idx = p.unoHand.length-1; 
-    const card = p.unoHand[idx]; 
-    const top = r.unoPile[r.unoPile.length-1];
-    
-    if(card.color === 'black' || card.color === r.unoColor || card.type === top.type) {
-        processUnoMove(room, p.id, idx, 'red'); // Color choice simplified for CPU draw-play
-    } else {
-        advanceUnoTurn(room);
-    }
+    const r = rooms[room]; const idx = p.unoHand.length - 1; const card = p.unoHand[idx];
+    if(canPlayUnoCard(r, card)) processUnoMove(room, p.id, idx, 'red'); 
+    else advanceUnoTurn(room);
 }
 
 function updateUnoState(room) {
@@ -381,20 +341,11 @@ function updateUnoState(room) {
     r.players.forEach(p => {
         if(p.isCpu) return;
         const pub = r.players.map((pl, i) => ({ 
-            username: pl.username, 
-            color: pl.color, 
-            handCount: pl.unoHand.length, 
-            isTurn: i === r.unoTurn, 
-            score: pl.score, 
-            isCpu: pl.isCpu 
+            username: pl.username, color: pl.color, handCount: pl.unoHand.length, isTurn: i === r.unoTurn, score: pl.score, isCpu: pl.isCpu 
         }));
         io.to(p.id).emit('unoUpdate', { 
-            players: pub, 
-            myHand: p.unoHand, 
-            topCard: r.unoPile[r.unoPile.length-1], 
-            currentColor: r.unoColor, 
-            drawStack: r.unoDrawStack, 
-            isMyTurn: r.players[r.unoTurn].id === p.id 
+            players: pub, myHand: p.unoHand, topCard: r.unoPile[r.unoPile.length-1], 
+            currentColor: r.unoColor, drawStack: r.unoDrawStack, isMyTurn: r.players[r.unoTurn].id === p.id 
         });
     });
 }

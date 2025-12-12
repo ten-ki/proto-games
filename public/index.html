@@ -7,7 +7,6 @@
     <script src="/socket.io/socket.io.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;500;700&display=swap" rel="stylesheet">
     <style>
-        /* --- MODERN GLASSPUNK THEME --- */
         :root {
             --bg: #0f0c29;
             --gradient: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
@@ -15,72 +14,36 @@
             --border: rgba(255, 255, 255, 0.15);
             --text: #ffffff;
             --accent: #00f260;
-            --accent-sec: #0575E6;
             --uno-red: #ff5e57;
             --uno-blue: #0fbcf9;
             --uno-green: #0be881;
             --uno-yellow: #ffdd59;
         }
-        
         body { background: var(--gradient); color: var(--text); font-family: 'Outfit', sans-serif; margin: 0; height: 100vh; display: flex; overflow: hidden; }
-
-        /* --- LAYOUT --- */
         #main-app { display: flex; width: 100%; height: 100%; padding: 25px; gap: 25px; box-sizing: border-box; }
-        
-        #game-view { 
-            flex: 3; border-radius: 24px; background: var(--panel); border: 1px solid var(--border);
-            backdrop-filter: blur(20px); position: relative; overflow: hidden; display: flex; flex-direction: column;
-            box-shadow: 0 20px 50px rgba(0,0,0,0.3);
-        }
-        
-        #sidebar { 
-            flex: 1; min-width: 320px; border-radius: 24px; background: var(--panel); border: 1px solid var(--border);
-            backdrop-filter: blur(20px); display: flex; flex-direction: column; overflow: hidden;
-        }
-
+        #game-view { flex: 3; border-radius: 24px; background: var(--panel); border: 1px solid var(--border); backdrop-filter: blur(20px); position: relative; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 20px 50px rgba(0,0,0,0.3); }
+        #sidebar { flex: 1; min-width: 320px; border-radius: 24px; background: var(--panel); border: 1px solid var(--border); backdrop-filter: blur(20px); display: flex; flex-direction: column; overflow: hidden; }
         h1 { position: absolute; top: 25px; left: 35px; margin: 0; font-weight: 700; letter-spacing: 2px; background: linear-gradient(to right, #00f260, #0575E6); background-clip: text; -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-        
-        button {
-            background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white;
-            padding: 12px 24px; border-radius: 12px; font-weight: 600; cursor: pointer; transition: 0.3s; font-family: inherit;
-        }
+        button { background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; padding: 12px 24px; border-radius: 12px; font-weight: 600; cursor: pointer; transition: 0.3s; font-family: inherit; }
         button:hover { background: white; color: #302b63; transform: translateY(-2px); }
         button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
-        
-        input, select {
-            background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.2); color: white;
-            padding: 14px; border-radius: 12px; outline: none; width: 100%; box-sizing: border-box; font-family: inherit;
-        }
+        input, select { background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.2); color: white; padding: 14px; border-radius: 12px; outline: none; width: 100%; box-sizing: border-box; font-family: inherit; }
         input:focus { border-color: var(--accent); background: rgba(0,0,0,0.5); }
-
-        /* --- LOGIN --- */
-        #login-modal {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.85); backdrop-filter: blur(10px); z-index: 100;
-            display: flex; gap: 40px; align-items: center; justify-content: center;
-        }
-        .glass-card {
-            background: rgba(255,255,255,0.05); padding: 40px; border-radius: 30px;
-            width: 340px; display: flex; flex-direction: column; gap: 15px; border: 1px solid rgba(255,255,255,0.1);
-        }
-
-        /* --- CHAT --- */
+        #login-modal { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); backdrop-filter: blur(10px); z-index: 100; display: flex; gap: 40px; align-items: center; justify-content: center; }
+        .glass-card { background: rgba(255,255,255,0.05); padding: 40px; border-radius: 30px; width: 340px; display: flex; flex-direction: column; gap: 15px; border: 1px solid rgba(255,255,255,0.1); }
         .tabs { display: flex; padding: 10px 10px 0; gap: 10px; }
         .tab { flex: 1; padding: 12px; text-align: center; cursor: pointer; color: rgba(255,255,255,0.5); transition: 0.3s; }
         .tab.active { color: white; background: rgba(255,255,255,0.05); font-weight: 600; border-radius: 12px 12px 0 0; }
-        
         .chat-content { flex: 1; overflow-y: auto; padding: 20px; background: rgba(0,0,0,0.2); }
         .msg { margin-bottom: 8px; font-size: 0.9rem; word-break: break-word; }
         .sys { color: #f1c40f; font-style: italic; font-size: 0.8rem; margin-bottom: 5px; }
         .input-area { padding: 20px; display: flex; gap: 10px; border-top: 1px solid var(--border); }
-
-        /* --- UNO --- */
         #uno-table { width: 100%; height: 100%; position: relative; display: none; }
         .opp-container { position: absolute; top: 0; left: 0; width: 100%; height: 50%; display: flex; justify-content: center; align-items: center; gap: 30px; }
         .opp-card { background: rgba(0,0,0,0.4); padding: 15px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.1); text-align: center; width: 100px; }
         .opp-card.turn { border-color: var(--accent); box-shadow: 0 0 20px rgba(0,242,96,0.3); transform: scale(1.1); transition: 0.3s; }
         .center-area { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -20%); display: flex; gap: 40px; align-items: center; z-index: 5; }
-        .uno-card { width: 90px; height: 135px; border-radius: 12px; display: flex; justify-content: center; align-items: center; font-size: 2.5rem; font-weight: 800; color: white; border: 4px solid white; position: relative; user-select: none; transition: 0.3s; box-shadow: 0 10px 20px rgba(0,0,0,0.5); }
+        .uno-card { width: 90px; height: 135px; border-radius: 12px; display: flex; justify-content: center; align-items: center; font-size: 2.5rem; font-weight: 800; color: white; border: 4px solid white; position: relative; user-select: none; transition: 0.3s; }
         .uno-card:hover { transform: translateY(-20px) scale(1.1); z-index: 100; cursor: pointer; }
         .u-red { background: var(--uno-red); } .u-blue { background: var(--uno-blue); } .u-green { background: var(--uno-green); } .u-yellow { background: var(--uno-yellow); color: #444; text-shadow:none; } .u-black { background: #2d3436; } .u-back { background: #2d3436; background-image: radial-gradient(#444 15%, transparent 16%); background-size: 20px 20px; }
         .current-bg { width: 300px; height: 300px; border-radius: 50%; position: absolute; top:50%; left:50%; transform:translate(-50%,-20%); z-index: 0; opacity: 0.2; filter: blur(60px); transition: 1s; }
@@ -88,15 +51,15 @@
         .my-hand:hover .uno-card { margin-right: 10px; }
         #color-picker { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 50; display: none; align-items: center; justify-content: center; gap: 30px; backdrop-filter: blur(5px); }
         .cp-btn { width: 100px; height: 100px; border-radius: 50%; cursor: pointer; border: 6px solid white; transition:0.2s; }
-
-        /* --- BJ --- */
         #bj-table { width: 100%; height: 100%; display: none; flex-direction: column; align-items: center; justify-content: center; }
         .bj-cards { display: flex; gap: 10px; min-height: 100px; margin: 10px 0; justify-content: center; }
         .bj-card { width: 70px; height: 100px; background: white; color: black; border-radius: 8px; display: flex; justify-content: center; align-items: center; font-size: 1.5rem; font-weight: bold; }
         .bj-card.red { color: #e74c3c; }
         #bet-overlay { position: absolute; width: 100%; height: 100%; background: rgba(0,0,0,0.85); backdrop-filter: blur(10px); display: none; flex-direction: column; justify-content: center; align-items: center; z-index: 20; }
         
-        #sys-msg { position: absolute; bottom: 120px; width: 100%; text-align: center; color: white; pointer-events: none; font-size: 1.5rem; text-shadow: 0 2px 10px rgba(0,0,0,0.5); font-weight: bold; }
+        /* ★重要: pointer-events: none を削除して、ボタンをクリック可能にする */
+        #sys-msg { position: absolute; bottom: 120px; width: 100%; text-align: center; color: white; font-size: 1.5rem; text-shadow: 0 2px 10px rgba(0,0,0,0.5); z-index: 10; }
+        #sys-msg button { pointer-events: auto; }
     </style>
 </head>
 <body>
@@ -235,9 +198,28 @@
 
         function renderUnoLobby(players) {
             const my = players.find(p=>p.username===myUser); if(!my)return;
-            if(!my.ready && (!my.unoHand || my.unoHand.length===0)) $('sys-msg').innerHTML = `<button onclick="socket.emit('toggleReady',{room:roomID})">READY?</button>`;
-            else $('sys-msg').innerHTML = "WAITING FOR OTHERS...";
+            // メッセージエリアのクリア
+            $('sys-msg').innerHTML = ""; 
+            
+            if(!my.ready && (!my.unoHand || my.unoHand.length===0)) {
+                // Readyボタン生成
+                const btn = document.createElement("button");
+                btn.innerText = "READY TO START?";
+                btn.style.fontSize = "1.5rem";
+                btn.style.padding = "15px 40px";
+                btn.style.background = "var(--accent)";
+                btn.style.boxShadow = "0 0 20px var(--accent)";
+                btn.onclick = () => {
+                    btn.disabled = true; 
+                    btn.innerText = "WAITING...";
+                    socket.emit('toggleReady', {room:roomID});
+                };
+                $('sys-msg').appendChild(btn);
+            } else {
+                $('sys-msg').innerText = "WAITING FOR OTHERS...";
+            }
         }
+        
         socket.on('unoUpdate', d => {
             const ops = d.players.filter(p=>p.username!==myUser);
             $('uno-opponents').innerHTML = ops.map(p => `<div class="opp-card ${p.isTurn?'turn':''}"><div style="font-weight:bold; color:${p.color}">${p.username}</div><div style="font-size:2rem; font-weight:bold;">${p.handCount}</div></div>`).join('');
