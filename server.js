@@ -243,6 +243,20 @@ function processUnoMove(room, playerId, cardIndex, colorChoice) {
     // Play
     p.unoHand.splice(cardIndex, 1);
     r.unoPile.push(card);
+
+    // If a number card was played, allow playing all other cards with the same number/type at once
+    if (/^\d+$/.test(card.type)) {
+        // iterate and remove any matching-number cards from hand and push to pile
+        let i = 0;
+        while (i < p.unoHand.length) {
+            if (p.unoHand[i].type === card.type) {
+                const extra = p.unoHand.splice(i, 1)[0];
+                r.unoPile.push(extra);
+            } else {
+                i++;
+            }
+        }
+    }
     
     // Color update
     if(card.color !== 'black') r.unoColor = card.color;
