@@ -35,6 +35,9 @@ const SAVE_INTERVAL = 30 * 1000; // persist every 30s
 const INITIAL_WEALTH = 3000;
 const RELIEF_THRESHOLD = 100;
 const RELIEF_AMOUNT = 1000;
+// CPU timings
+const CPU_THINK_MS = 2400; // base think delay
+const CPU_FALLBACK_MS = 6500; // if CPU hasn't acted by this, force a fallback action
 
 setInterval(() => {
     const cut = Date.now() - LOG_RETENTION;
@@ -282,6 +285,8 @@ io.on('connection', (socket) => {
                     }
                 }
                 r.players.splice(idx,1);
+                // clear any cpu fallback timers for this socket
+                try { if(rooms[rid] && rooms[rid]._cpuFallbacks && rooms[rid]._cpuFallbacks[sock.id]) { clearTimeout(rooms[rid]._cpuFallbacks[sock.id]); rooms[rid]._cpuFallbacks[sock.id] = null; } } catch(e) {}
                 if(!r.players.some(pl => !pl.isCpu)) delete rooms[rid];
                 else {
                     r.gameActive = false;
@@ -746,6 +751,9 @@ function advanceUnoTurn(room) {
     const prevObj = r.players[prevIdx];
     const prevPlayer = prevObj ? prevObj.username : null;
 
+    // clear any cpu fallback timers for previous player
+    try { if(r._cpuFallbacks && prevObj && r._cpuFallbacks[prevObj.id]) { clearTimeout(r._cpuFallbacks[prevObj.id]); r._cpuFallbacks[prevObj.id] = null; } } catch(e) {}
+
     // Apply UNO penalty for prev player if they had 1 card and didn't call UNO
     try {
         if(prevObj && prevObj.unoHand && prevObj.unoHand.length === 1 && !prevObj.unoCalled) {
@@ -770,36 +778,109 @@ function advanceUnoTurn(room) {
 }
 function getNextTurn(r) { return (r.unoTurn + r.unoDirection + r.players.length) % r.players.length; }
 function checkCpuTurn(room) { const r = rooms[room]; if(!r.gameActive) return; const p = r.players[r.unoTurn]; if(p.isCpu) setTimeout(() => runCpuLogic(room, p), 2400); }
+function checkCpuTurn(room) {
+    const r = rooms[room]; if(!r || !r.gameActive) return;
+    const p = r.players[r.unoTurn];
+    if(!p || !p.isCpu) return;
+
+    // schedule CPU think and fallback guard
+    const thinkDelay = CPU_THINK_MS;
+    // clear any existing fallback timer for this player
+    if(!r._cpuFallbacks) r._cpuFallbacks = {};
+    if(r._cpuFallbacks[p.id]) { clearTimeout(r._cpuFallbacks[p.id]); r._cpuFallbacks[p.id] = null; }
+
+    setTimeout(() => runCpuLogic(room, p), thinkDelay);
+    // fallback: force an action if CPU hasn't acted within CPU_FALLBACK_MS
+    r._cpuFallbacks[p.id] = setTimeout(() => {
+        try { cpuFallbackAction(room, p); } catch(e) { console.error('cpuFallbackAction error', e); }
+        r._cpuFallbacks[p.id] = null;
+    }, CPU_FALLBACK_MS);
+}
 
 function runCpuLogic(room, p) {
-    const r = rooms[room]; if(!r.gameActive) return;
-    
-    // Choose Color
-    const counts = {red:0, blue:0, green:0, yellow:0};
-    p.unoHand.forEach(c => { if(c.color!=='black') counts[c.color]++; });
-    const fav = Object.keys(counts).reduce((a, b) => counts[a] > counts[b] ? a : b);
+    try {
+        const r = rooms[room]; if(!r || !r.gameActive) return;
+        // clear fallback timer (we're acting now)
+        if(r._cpuFallbacks && r._cpuFallbacks[p.id]) { clearTimeout(r._cpuFallbacks[p.id]); r._cpuFallbacks[p.id] = null; }
 
-    // Find Playable
-    let idx = -1;
-    // Prefer non-wild first
-    idx = p.unoHand.findIndex(c => c.color !== 'black' && canPlayUnoCard(r, c));
-    if(idx === -1) idx = p.unoHand.findIndex(c => c.color === 'black' && canPlayUnoCard(r, c));
-    
-    if(idx !== -1) {
-        // If this play would leave the CPU with 1 card, mark unoCalled so it won't be penalized
-        try { const candidate = p.unoHand[idx]; if(candidate && (p.unoHand.length - 1) === 1) p.unoCalled = true; } catch(e){}
-        setTimeout(() => processUnoMove(room, p.id, idx, fav), 400);
-    } else setTimeout(() => processUnoDraw(room, p.id), 400);
+        // lightweight decision: collect playable indices
+        const playableIndices = [];
+        for(let i=0;i<p.unoHand.length;i++) {
+            const c = p.unoHand[i]; if(canPlayUnoCard(r, c)) playableIndices.push(i);
+        }
+
+        if(playableIndices.length === 0) {
+            // no playable card, draw
+            setTimeout(() => processUnoDraw(room, p.id), 300);
+            return;
+        }
+
+        // prefer non-wilds; if none, allow wild
+        const nonWild = playableIndices.filter(i => p.unoHand[i].color !== 'black');
+        const choiceIdx = (nonWild.length>0 ? nonWild[Math.floor(Math.random()*nonWild.length)] : playableIndices[Math.floor(Math.random()*playableIndices.length)]);
+
+        // choose favorite color heuristically
+        const counts = {red:0, blue:0, green:0, yellow:0};
+        p.unoHand.forEach(c => { if(c.color!=='black') counts[c.color]++; });
+        const fav = Object.keys(counts).reduce((a,b) => counts[a] >= counts[b] ? a : b);
+
+        // if chosen is wild, pick fav color; else pass null
+        const chosenCard = p.unoHand[choiceIdx];
+        const colorChoice = (chosenCard && chosenCard.color === 'black') ? fav : null;
+
+        // if playing would leave CPU with 1 card, mark unoCalled to avoid penalty
+        try { if((p.unoHand.length - 1) === 1) p.unoCalled = true; } catch(e){}
+
+        setTimeout(() => processUnoMove(room, p.id, choiceIdx, colorChoice), 300 + Math.floor(Math.random()*200));
+    } catch(e) {
+        console.error('runCpuLogic error', e);
+        try { cpuFallbackAction(room, p); } catch(err) { console.error('cpuFallbackAction fallback error', err); }
+    }
+}
+
+function cpuFallbackAction(room, p) {
+    const r = rooms[room]; if(!r || !r.gameActive) return;
+    // safe minimal fallback: try to play any legal card; if none, draw
+    try {
+        const playable = [];
+        for(let i=0;i<p.unoHand.length;i++) {
+            const c = p.unoHand[i]; if(canPlayUnoCard(r,c)) playable.push(i);
+        }
+        if(playable.length === 0) {
+            processUnoDraw(room, p.id);
+            return;
+        }
+        // prefer non-wild
+        const nonWild = playable.filter(i => p.unoHand[i].color !== 'black');
+        const pick = nonWild.length>0 ? nonWild[Math.floor(Math.random()*nonWild.length)] : playable[Math.floor(Math.random()*playable.length)];
+        const card = p.unoHand[pick];
+        const counts = {red:0, blue:0, green:0, yellow:0}; p.unoHand.forEach(c=>{ if(c.color!=='black') counts[c.color]++; });
+        const fav = Object.keys(counts).reduce((a,b) => counts[a] >= counts[b] ? a : b);
+        const colorChoice = card && card.color === 'black' ? fav : null;
+        // mark UNO if leaving 1
+        try { if((p.unoHand.length - 1) === 1) p.unoCalled = true; } catch(e){}
+        processUnoMove(room, p.id, pick, colorChoice);
+    } catch(e) {
+        console.error('cpuFallbackAction critical error', e);
+        // as last resort, advance turn to avoid stuck
+        advanceUnoTurn(room);
+    }
 }
 
 function cpuTryPlayAfterDraw(room, p) {
-    const r = rooms[room]; const card = p.unoHand[p.unoHand.length-1];
-    if(canPlayUnoCard(r, card)) {
-        // if playing this card will result in 1 card, auto-call UNO
-        try { if((p.unoHand.length - 1) === 1) p.unoCalled = true; } catch(e){}
-        processUnoMove(room, p.id, p.unoHand.length-1, 'red');
-    }
-    else advanceUnoTurn(room);
+    const r = rooms[room];
+    try {
+        // clear any fallback timer for this CPU
+        if(r && r._cpuFallbacks && r._cpuFallbacks[p.id]) { clearTimeout(r._cpuFallbacks[p.id]); r._cpuFallbacks[p.id] = null; }
+        const card = p.unoHand[p.unoHand.length-1];
+        if(canPlayUnoCard(r, card)) {
+            // if playing this card will result in 1 card, auto-call UNO
+            try { if((p.unoHand.length - 1) === 1) p.unoCalled = true; } catch(e){}
+            processUnoMove(room, p.id, p.unoHand.length-1, 'red');
+            return;
+        }
+    } catch(e) { console.error('cpuTryPlayAfterDraw error', e); }
+    advanceUnoTurn(room);
 }
 
 function updateUnoState(room) {
