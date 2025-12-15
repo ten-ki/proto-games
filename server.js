@@ -413,16 +413,8 @@ function processUnoMove(room, playerId, cardIndex, colorChoice) {
     // notify clients what card was played (so they can animate the face)
     io.to(room).emit('cardPlayed', { username: p.username, card: { color: card.color, type: card.type } });
 
-    // If a number card was played, allow automatic additional matching-number cards (server-side fallback)
-    if (/^\d+$/.test(card.type)) {
-        let i = 0;
-        while (i < p.unoHand.length) {
-            if (p.unoHand[i].type === card.type) {
-                const extra = p.unoHand.splice(i, 1)[0];
-                r.unoPile.push(extra);
-            } else i++;
-        }
-    }
+    // NOTE: remove server-side automatic mass-play. Instead allow the player to
+    // continue playing additional cards of the same `type` themselves (chain).
     
     // Color update
     if(card.color !== 'black') r.unoColor = card.color;
@@ -459,6 +451,45 @@ function processUnoMove(room, playerId, cardIndex, colorChoice) {
     }
     // reset draw flag when a play happens
     p.hasDrawnThisTurn = false;
+
+    // Win
+    if(p.unoHand.length === 0) {
+        // mark player finished but continue match
+        p.finished = true;
+        let pool = 0;
+        r.players.forEach(pl => { 
+            if(pl !== p) { let pen = 200; if(pl.score >= pen) { pl.score -= pen; pool += pen; } else { pool += pl.score; pl.score = 0; } } 
+        });
+        p.score += pool;
+        io.to(room).emit('playerFinished', { username: p.username, reward: pool });
+        const active = r.players.filter(pl => !pl.finished && !pl.isCpu);
+        if(active.length <= 1) {
+            const winners = r.players.filter(pl => !pl.isCpu).sort((a,b)=>b.score-a.score);
+            const w = winners[0] || p;
+            io.to(room).emit('gameOver', { winner: w.color, msg: `WINNER: ${w.username}` });
+            r.gameActive = false;
+            r.players = r.players.filter(pl => !pl.isCpu);
+            r.players.forEach(pl => pl.ready = false);
+            return;
+        }
+        // otherwise continue match without removing room
+    }
+
+    // If the player still has cards of the same `type` as the just-played card,
+    // allow them to continue (do not advance the turn). Emit a targeted event
+    // to inform the client that chaining is allowed and which `type` is required.
+    try {
+        const lastType = card.type;
+        const hasSameType = p.unoHand.some(c => String(c.type) === String(lastType));
+        if(hasSameType) {
+            // Inform only this player that they may continue chaining
+            socketEmitToPlayer(p.id, 'chainAllowed', { requiredType: lastType });
+            updateUnoState(room);
+            // If the current player is a CPU, schedule next CPU action immediately
+            checkCpuTurn(room);
+            return; // keep turn with this player
+        }
+    } catch(e) { console.error('chain check error', e); }
 
     // UNO penalty: if player has 1 card and did NOT press UNO call before ending, force draw 2
     if(p.unoHand.length === 1 && !p.unoCalled) {
@@ -674,7 +705,19 @@ function drawCards(r, p, count) {
 
 function advanceUnoTurn(room) {
     const r = rooms[room];
-    const prevPlayer = r.players[r.unoTurn] ? r.players[r.unoTurn].username : null;
+    const prevIdx = r.unoTurn;
+    const prevObj = r.players[prevIdx];
+    const prevPlayer = prevObj ? prevObj.username : null;
+
+    // Apply UNO penalty for prev player if they had 1 card and didn't call UNO
+    try {
+        if(prevObj && prevObj.unoHand && prevObj.unoHand.length === 1 && !prevObj.unoCalled) {
+            const drawn = drawCards(r, prevObj, 2);
+            if(drawn.length>0) io.to(room).emit('cardDrawn', { username: prevObj.username, cards: drawn.map(c=>({ color:c.color, type:c.type })) });
+            io.to(room).emit('unoPenalty', { username: prevObj.username });
+        }
+    } catch(e) { console.error('advanceUnoTurn penalty error', e); }
+
     const nextIdx = getNextTurn(r);
     const nextPlayer = r.players[nextIdx] ? r.players[nextIdx].username : null;
     r.unoTurn = nextIdx;

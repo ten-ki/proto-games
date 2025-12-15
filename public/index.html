@@ -362,6 +362,9 @@
         let selectedCardTypes = {};
         // map of hand cards by id for easy lookup
         let handById = {};
+        // chain state (server informs client when continuing same-type chaining is allowed)
+        window.chainActive = false;
+        window.chainRequiredType = null;
 
         // CHAT
         function sendLobby() { const t=$('lobby-in').value; if(t){socket.emit('sendChat',{type:'global',username:$('username').value,text:t});$('lobby-in').value='';} }
@@ -511,11 +514,11 @@
             prevUnoPlayersMap = {};
             d.players.forEach(p => prevUnoPlayersMap[p.username] = p.handCount);
 
-            // build hand map for lookup
+            // build hand map for lookup (keep index for server-side cardIndex)
             handById = {};
             $('uno-hand').innerHTML = d.myHand.map((c, i) => {
                 const cid = c.id || `${i}`;
-                handById[String(cid)] = c;
+                handById[String(cid)] = Object.assign({}, c, { __idx: i });
                 const isSelected = selectedCards.includes(String(cid));
                 const ccc = c.color==='black'?'u-black':`u-${c.color}`;
                 const t = formatUnoText(c.type);
@@ -537,7 +540,11 @@
                 }
 
                 const playable = isPlayable(c);
-                const disabledClass = playable ? '' : 'disabled';
+                // If a chain is active, only allow cards of the required type (or wilds)
+                let disabledClass = playable ? '' : 'disabled';
+                if(window.chainActive && window.chainRequiredType) {
+                    if(!(String(c.type) === String(window.chainRequiredType) || c.color === 'black')) disabledClass = 'disabled';
+                }
                 const badge = isSelected ? `<div class="select-badge">${selectedCards.indexOf(String(cid))+1}</div>` : '';
                 return `<div class="hand-card-wrapper" style="position:relative;"><div data-id="${cid}" id="card-${i}" class="uno-card ${ccc} ${long} ${isSelected?'selected':''} ${disabledClass}" onclick="toggleSelect('${cid}','${c.type}',${i})"><span>${t}</span>${badge}</div></div>`;
             }).join('');
@@ -556,6 +563,9 @@
                 }
             } else if(existingUnoBtn) existingUnoBtn.remove();
         });
+
+            // clear chain UI if it's no longer our turn
+            if(!d.isMyTurn) { window.chainActive = false; window.chainRequiredType = null; }
 
         function formatUnoText(type) {
             if(type==='draw2') return '+2';
@@ -747,24 +757,46 @@
             if(pile) { pile.classList.add('pop'); setTimeout(()=>pile.classList.remove('pop'), 800); }
         });
 
+        // Server informs this player they may continue chaining same-`type` cards
+        socket.on('chainAllowed', d => {
+            // d: { requiredType }
+            window.chainActive = true;
+            window.chainRequiredType = d && d.requiredType ? d.requiredType : null;
+            // ensure UI indicates playability for chain: enable only matching types and wilds
+            Object.keys(handById).forEach(k => {
+                const entry = handById[k];
+                const el = document.querySelector(`#uno-hand [data-id="${k}"]`);
+                if(!el) return;
+                if(entry.color === 'black' || String(entry.type) === String(window.chainRequiredType)) {
+                    el.classList.remove('disabled');
+                } else {
+                    el.classList.add('disabled');
+                }
+            });
+            showFloatingError('同じ種類のカードを続けて出せます');
+            // keep myTurn true so client can continue
+            myTurn = true; refreshEndTurnButton();
+        });
+
         function toggleSelect(cardId, type, index) {
             if(!myTurn) return;
             cardId = String(cardId);
-            // element for this card
             const el = document.querySelector(`#uno-hand [data-id="${cardId}"]`);
-            // If the card is marked disabled by initial render, only block it for the first selection.
-            // For subsequent selections we perform a fresh legality check relative to previous selected card.
-            if(el && el.classList.contains('disabled') && selectedCards.length === 0) {
+
+            // If card disabled, block selection
+            if(el && el.classList.contains('disabled')) {
                 el.classList.add('invalid-move'); setTimeout(()=>el.classList.remove('invalid-move'),300);
                 return;
             }
 
-            const pos = selectedCards.indexOf(cardId);
-            if(pos !== -1) {
+            const already = selectedCards.indexOf(cardId) !== -1;
+            // Single-select behavior: selecting a card selects only that one
+            if(already) {
                 // deselect
-                selectedCards.splice(pos, 1);
+                selectedCards = [];
                 delete selectedColorChoices[cardId];
                 delete selectedCardTypes[cardId];
+                if(el) el.classList.remove('selected');
             } else {
                 // handle wilds/draw4 requiring color choice first
                 if(type === 'wild' || type === 'draw4') {
@@ -773,11 +805,10 @@
                     return;
                 }
 
-                // Client-side multi-play rules:
-                // - If no previous selection: card must be playable against current pile.
-                // - If there is a previous selection: card.type must equal previous selected card.type
-                //   AND it must be legal relative to the previous selected card (same color or same type or black).
+                // build clicked card info
+                const clickedCard = handById[cardId] || { type: type, color: null, __idx: index };
 
+                // check playability against pile
                 function isPlayableAgainstTop(card) {
                     if(!lastTopCard) return false;
                     if(lastDrawStack > 0) {
@@ -791,60 +822,21 @@
                     return false;
                 }
 
-                // build a simple card object for clicked card from hand map
-                const clickedCard = handById[cardId] || { type: type, color: null };
-
-                if(selectedCards.length === 0) {
-                    if(!isPlayableAgainstTop(clickedCard)) {
-                        el.classList.add('invalid-move'); setTimeout(()=>el.classList.remove('invalid-move'),300);
-                        showFloatingError('このカードは場に出せません');
-                        return;
-                    }
-                    selectedCards.push(cardId);
-                    selectedCardTypes[cardId] = clickedCard.type;
-                    // visual
-                    if(el) { setTimeout(()=>{ const b = el.querySelector('.select-badge'); if(b){ b.classList.remove('pop'); void b.offsetWidth; b.classList.add('pop'); }},60); el.classList.add('selected'); }
-                } else {
-                    // check previous selected card
-                    const prevId = selectedCards[selectedCards.length-1];
-                    const prevCard = handById[prevId];
-                    if(!prevCard) {
-                        showFloatingError('内部エラー: 前のカードが見つかりません'); return;
-                    }
-
-                    // require same type as previous
-                    if(String(clickedCard.type) !== String(prevCard.type)) {
-                        el.classList.add('invalid-move'); setTimeout(()=>el.classList.remove('invalid-move'),300);
-                        showFloatingError('まとめ出しは同じ数字/記号のみ可能です');
-                        return;
-                    }
-
-                    // legality relative to previous selected card: use same rules as pile-check but with prevCard as top
-                    function isPlayableAgainstCard(topCard, card) {
-                        if(!topCard) return false;
-                        if(lastDrawStack > 0) {
-                            if(topCard.type === 'draw2' && card.type === 'draw2') return true;
-                            if(topCard.type === 'draw4' && card.type === 'draw4') return true;
-                            return false;
-                        }
-                        if(card.color === 'black') return true;
-                        if(card.color === topCard.color) return true;
-                        if(card.type === topCard.type) return true;
-                        return false;
-                    }
-
-                    if(!isPlayableAgainstCard(prevCard, clickedCard)) {
-                        el.classList.add('invalid-move'); setTimeout(()=>el.classList.remove('invalid-move'),300);
-                        showFloatingError('このカードは前のカードに対して合法ではありません');
-                        return;
-                    }
-
-                    // passed checks
-                    selectedCards.push(cardId);
-                    selectedCardTypes[cardId] = clickedCard.type;
-                    if(el) { setTimeout(()=>{ const b = el.querySelector('.select-badge'); if(b){ b.classList.remove('pop'); void b.offsetWidth; b.classList.add('pop'); }},60); el.classList.add('selected'); }
+                if(!isPlayableAgainstTop(clickedCard)) {
+                    el.classList.add('invalid-move'); setTimeout(()=>el.classList.remove('invalid-move'),300);
+                    showFloatingError('このカードは場に出せません');
+                    return;
                 }
+
+                // select only this card
+                selectedCards = [cardId];
+                selectedCardTypes[cardId] = clickedCard.type;
+                if(el) el.classList.add('selected');
             }
+
+            // clear any chain hint when user manually changes selection
+            window.chainActive = false; window.chainRequiredType = null;
+
             refreshHandSelection();
             refreshEndTurnButton();
         }
@@ -873,10 +865,10 @@
         }
 
         function refreshEndTurnButton() {
-            const btn = document.getElementById('end-turn-btn');
+            const btn = document.getElementById('play-btn');
             if(myTurn && selectedCards.length>0) {
                 if(!btn) {
-                    const b = document.createElement('button'); b.id='end-turn-btn'; b.innerText='END TURN'; b.onclick = endTurnPlay; document.getElementById('sys-msg').appendChild(b);
+                    const b = document.createElement('button'); b.id='play-btn'; b.innerText='PLAY'; b.onclick = playSelectedCard; document.getElementById('sys-msg').appendChild(b);
                 }
             } else if(btn) btn.remove();
         }
@@ -894,38 +886,53 @@
             if(typeof pendingI === 'number') {
                 socket.emit('unoMove', {room:roomID, cardIndex:pendingI, colorChoice:c});
             } else {
-                // pendingI is cardId string for selection
+                // pendingI is cardId string for selection: play this single card immediately
                 const cid = String(pendingI);
-                selectedColorChoices[cid] = c;
-                if(!selectedCards.includes(cid)) selectedCards.push(cid);
+                const entry = handById[cid];
+                const idx = entry && typeof entry.__idx === 'number' ? entry.__idx : null;
+                // animate then send
+                const el = document.querySelector(`#uno-hand [data-id="${cid}"]`);
                 pendingI = -1;
-                refreshHandSelection(); refreshEndTurnButton();
+                if(el) {
+                    animateCardToPile(el).then(() => {
+                        socket.emit('unoMove', { room: roomID, cardIndex: idx, colorChoice: c });
+                    });
+                } else {
+                    socket.emit('unoMove', { room: roomID, cardIndex: idx, colorChoice: c });
+                }
+                // clear selection UI
+                selectedCards = []; selectedColorChoices = {}; refreshHandSelection(); refreshEndTurnButton();
             }
         }
 
-        async function endTurnPlay() {
+        async function playSelectedCard() {
             if(!myTurn || selectedCards.length===0) return;
-            // client-side validation: ensure none of the selected elements are disabled
-            for(const cid of selectedCards) {
-                const el = document.querySelector(`#uno-hand [data-id="${cid}"]`);
-                if(!el || el.classList.contains('disabled')) {
-                    if(el) { el.classList.add('invalid-move'); setTimeout(()=>el.classList.remove('invalid-move'),300); }
-                    showFloatingError('選択に無効なカードがあります');
-                    return;
-                }
+            const cid = selectedCards[0];
+            const entry = handById[cid];
+            const idx = entry && typeof entry.__idx === 'number' ? entry.__idx : null;
+
+            // If wild/draw4 was selected, color-picker flow should already handle it via pendingI.
+            if(entry && (entry.type === 'wild' || entry.type === 'draw4') && !selectedColorChoices[cid]) {
+                // Ask color
+                pendingI = cid; $('color-picker').style.display = 'flex';
+                return;
             }
 
-            const colorChoices = selectedCards.map(id => selectedColorChoices[id] || null);
+            // client-side validation
+            const el = document.querySelector(`#uno-hand [data-id="${cid}"]`);
+            if(!el || el.classList.contains('disabled')) {
+                if(el) { el.classList.add('invalid-move'); setTimeout(()=>el.classList.remove('invalid-move'),300); }
+                showFloatingError('選択に無効なカードがあります');
+                return;
+            }
+
             // Disable further interaction during animation
             myTurn = false; refreshEndTurnButton();
 
-            // animate selected cards sequentially to pile
-            await animatePlaySequence(selectedCards.slice());
+            if(el) await animateCardToPile(el);
 
-            // no local turn-end overlay (kept subtle)
+            socket.emit('unoMove', { room: roomID, cardIndex: idx, colorChoice: selectedColorChoices[cid] || null });
 
-            // after animation, send to server
-            socket.emit('unoMultiMove', { room: roomID, cardIds: selectedCards.slice(), colorChoices });
             // clear selection
             selectedCards = []; selectedColorChoices = {}; refreshHandSelection(); refreshEndTurnButton();
         }
