@@ -13,6 +13,19 @@ app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.ht
 // --- CONFIG ---
 let userDB = {}; 
 let rooms = {};
+let usersByUid = {}; // uid -> { username, totalWealth, cumulativeScore }
+// helper to get or create user record by uid or username
+function getUserRecord(uid, username) {
+    if(uid) {
+        if(!usersByUid[uid]) usersByUid[uid] = { username: username || `GUEST-${uid}`, totalWealth: INITIAL_WEALTH, cumulativeScore: 0 };
+        // update username if changed
+        if(username) usersByUid[uid].username = username;
+        return usersByUid[uid];
+    }
+    if(!userDB[username]) userDB[username] = { totalWealth: INITIAL_WEALTH, cumulativeScore: 0 };
+    return userDB[username];
+}
+let randomQueues = {}; // keyed by gameType -> array of { socketId, username, buyIn }
 let globalChatLogs = [];
 const LOG_RETENTION = 3600000;
 const INITIAL_WEALTH = 3000;
@@ -73,6 +86,13 @@ io.on('connection', (socket) => {
     sendRanking(socket);
     socket.emit('chatHistory', { type: 'global', logs: globalChatLogs });
 
+    // ensure removal from random queues on disconnect
+    socket.on('disconnecting', () => {
+        for (const gt in randomQueues) {
+            randomQueues[gt] = randomQueues[gt].filter(e => e.socketId !== socket.id);
+        }
+    });
+
     // Chat
     socket.on('sendChat', (d) => {
         const msg = { id:Date.now(), timestamp:Date.now(), username:d.username||'GUEST', text:d.text, color:d.color, type:d.type };
@@ -81,7 +101,7 @@ io.on('connection', (socket) => {
     });
 
     // Join
-    socket.on('joinRoom', ({ username, room, gameType, buyInAmount }) => {
+    socket.on('joinRoom', ({ username, room, gameType, buyInAmount, uid }) => {
         if(!username || !room) return socket.emit('error', 'INVALID INPUT');
         if(!rooms[room]) {
             rooms[room] = {
@@ -93,33 +113,105 @@ io.on('connection', (socket) => {
         }
         const r = rooms[room];
         
-        // Remove ghost
-        const dupIdx = r.players.findIndex(p => p.username === username);
+        // Remove ghost (by username or uid)
+        const dupIdx = r.players.findIndex(p => (uid && p.uid === uid) || p.username === username);
         if(dupIdx !== -1) r.players.splice(dupIdx, 1);
 
         if(r.players.length >= 6) return socket.emit('error', 'ROOM FULL');
 
-        // DB
-        if(!userDB[username]) userDB[username] = { totalWealth: INITIAL_WEALTH, cumulativeScore: 0 };
+        // DB record (by uid if provided)
+        const userRec = getUserRecord(uid, username);
         let relief = false;
-        if(userDB[username].totalWealth < RELIEF_THRESHOLD) { userDB[username].totalWealth = RELIEF_AMOUNT; relief = true; }
+        if(userRec.totalWealth < RELIEF_THRESHOLD) { userRec.totalWealth = RELIEF_AMOUNT; relief = true; }
 
         let fee = parseInt(buyInAmount); if(isNaN(fee)||fee<100) fee=100;
-        if(userDB[username].totalWealth < fee) return socket.emit('error', '資金不足です');
-        userDB[username].totalWealth -= fee;
+        if(userRec.totalWealth < fee) return socket.emit('error', '資金不足です');
+        userRec.totalWealth -= fee;
 
         const colors = ['#FF6B6B', '#4ECDC4', '#FFE66D', '#FFFFFF', '#FF9FF3', '#54A0FF'];
         r.players.push({
-            id: socket.id, username, color: colors[r.players.length % colors.length],
+            id: socket.id, username, uid: uid || null, color: colors[r.players.length % colors.length],
             isCpu: false, ready: false, score: fee, initialScore: fee, currentBet: 0, 
             hand: [], status: 'playing', result: '', unoHand: []
         });
         
         socket.join(room);
         const me = r.players.find(pl=>pl.id===socket.id);
-        socket.emit('joined', { color: me.color, mySeat: r.players.indexOf(me), wealth: userDB[username].totalWealth, relief });
+        socket.emit('joined', { color: me.color, mySeat: r.players.indexOf(me), wealth: userRec.totalWealth, relief });
         io.to(room).emit('roomUpdate', { players: r.players, gameType: r.gameType, maxRounds: r.maxRounds });
         io.emit('rankingUpdate', getRankingData());
+    });
+
+    // RANDOM MATCH: put player in a waiting queue for the requested game type and buy-in
+    socket.on('joinRandom', ({ username, gameType, buyInAmount, uid }) => {
+        if(!username || !gameType) return socket.emit('error','INVALID INPUT');
+        const buyIn = parseInt(buyInAmount) || 100;
+        const key = `${gameType}:${buyIn}`;
+        if(!randomQueues[key]) randomQueues[key] = [];
+
+        // add to queue
+        randomQueues[key].push({ socketId: socket.id, username, buyIn, uid });
+        socket.join(`waiting-${key}`);
+        socket.emit('waiting', `Looking for an opponent (${gameType}, ${buyIn})...`);
+
+        // if there is another waiting player, pair them
+        if(randomQueues[key].length >= 2) {
+            const a = randomQueues[key].shift();
+            const b = randomQueues[key].shift();
+            const roomId = `rand-${Date.now()}-${Math.floor(Math.random()*10000)}`;
+
+            // Create room and add both players
+            rooms[roomId] = {
+                gameType, players: [], gameActive: false,
+                unoDeck: [], unoPile: [], unoTurn: 0, unoDirection: 1, unoDrawStack: 0, unoColor: null,
+                deck: [], dealerHand: [], bjTurnIndex: 0, bjPhase: 'lobby', maxRounds: 7, currentRound: 0,
+                ovDeck: [], ovDealerCard: null, ovPhase: 'lobby'
+            };
+
+            [a,b].forEach((entry, idx) => {
+                const sid = entry.socketId;
+                const sock = io.sockets.sockets.get(sid);
+                if(!sock) return;
+
+                const userRec = getUserRecord(entry.uid, entry.username);
+                let relief = false;
+                if(userRec.totalWealth < RELIEF_THRESHOLD) { userRec.totalWealth = RELIEF_AMOUNT; relief = true; }
+
+                let fee = parseInt(entry.buyIn); if(isNaN(fee)||fee<100) fee=100;
+                if(userRec.totalWealth < fee) return sock.emit('error', '資金不足です');
+                userRec.totalWealth -= fee;
+
+                const colors = ['#FF6B6B', '#4ECDC4', '#FFE66D', '#FFFFFF', '#FF9FF3', '#54A0FF'];
+                const player = {
+                    id: sid, username: entry.username, uid: entry.uid || null, color: colors[idx % colors.length],
+                    isCpu: false, ready: true, score: fee, initialScore: fee, currentBet: 0,
+                    hand: [], status: 'playing', result: '', unoHand: []
+                };
+
+                rooms[roomId].players.push(player);
+                sock.leave(`waiting-${key}`);
+                sock.join(roomId);
+                sock.emit('joined', { color: player.color, mySeat: rooms[roomId].players.indexOf(player), wealth: userRec.totalWealth, relief });
+            });
+
+            // notify room
+            io.to(roomId).emit('roomUpdate', { players: rooms[roomId].players, gameType: rooms[roomId].gameType, maxRounds: rooms[roomId].maxRounds });
+            io.emit('rankingUpdate', getRankingData());
+
+            // auto-start if enough players
+            const r = rooms[roomId];
+            if(r.gameType === 'uno' && r.players.length >= 2) startUnoMatch(roomId);
+            if(r.gameType === 'blackjack' && r.players.length >= 2) startBjMatch(roomId);
+        }
+    });
+
+    // leave random queue
+    socket.on('leaveRandom', ({ gameType, buyInAmount }) => {
+        const buyIn = parseInt(buyInAmount) || 100;
+        const key = `${gameType}:${buyIn}`;
+        if(randomQueues[key]) randomQueues[key] = randomQueues[key].filter(e => e.socketId !== socket.id);
+        socket.leave(`waiting-${key}`);
+        socket.emit('waitingCancelled');
     });
 
     socket.on('disconnect', () => handleLeave(socket));
@@ -129,9 +221,14 @@ io.on('connection', (socket) => {
             const idx = r.players.findIndex(p=>p.id===sock.id);
             if(idx!==-1) {
                 const p = r.players[idx];
-                if(!p.isCpu && userDB[p.username]) {
-                    userDB[p.username].totalWealth += p.score;
-                    userDB[p.username].cumulativeScore += (p.score - p.initialScore);
+                if(!p.isCpu) {
+                    if(p.uid && usersByUid[p.uid]) {
+                        usersByUid[p.uid].totalWealth += p.score;
+                        usersByUid[p.uid].cumulativeScore += (p.score - p.initialScore);
+                    } else if(userDB[p.username]) {
+                        userDB[p.username].totalWealth += p.score;
+                        userDB[p.username].cumulativeScore += (p.score - p.initialScore);
+                    }
                 }
                 r.players.splice(idx,1);
                 if(!r.players.some(pl => !pl.isCpu)) delete rooms[rid];
@@ -191,7 +288,21 @@ io.on('connection', (socket) => {
     socket.on('unoDraw', ({ room }) => processUnoDraw(room, socket.id));
 });
 
-function getRankingData() { return Object.keys(userDB).map(k => ({ name: k, wealth: userDB[k].totalWealth, score: userDB[k].cumulativeScore })).sort((a, b) => b.score - a.score).slice(0, 10); }
+function getRankingData() {
+    const arr = [];
+    // UID users first
+    Object.keys(usersByUid).forEach(uid => {
+        const u = usersByUid[uid]; arr.push({ name: u.username, wealth: u.totalWealth, score: u.cumulativeScore });
+    });
+    // username-only users (avoid duplicates)
+    Object.keys(userDB).forEach(name => {
+        // skip if same name exists in usersByUid
+        if(!Object.values(usersByUid).some(u => u.username === name)) {
+            const u = userDB[name]; arr.push({ name: name, wealth: u.totalWealth, score: u.cumulativeScore });
+        }
+    });
+    return arr.sort((a,b)=>b.score-a.score).slice(0,10);
+}
 function sendRanking(socket) { socket.emit('rankingUpdate', getRankingData()); }
 
 // ==========================================

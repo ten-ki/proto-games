@@ -116,6 +116,26 @@
         .hand-card-wrapper:hover, .hand-card-wrapper:active {
             transform: translateY(-20px); margin-right: 35px; z-index: 101;
         }
+        .select-badge {
+            position: absolute; top: 6px; right: 6px; background: rgba(0,0,0,0.6);
+            color: #fff; width: 22px; height: 22px; font-size: 0.8rem; display:flex; align-items:center; justify-content:center;
+            border-radius: 50%; border: 2px solid rgba(255,255,255,0.6);
+            pointer-events: none;
+        }
+        .select-badge.pop { animation: pop 260ms cubic-bezier(.2,.9,.2,1); }
+        @keyframes pop { 0%{ transform: scale(0.6); opacity:0 } 60%{ transform: scale(1.15); opacity:1 } 100%{ transform: scale(1); } }
+
+        .uno-card.selected { transform: translateY(-22px) scale(1.04); box-shadow: 0 10px 30px rgba(0,0,0,0.6); border-color: #fff; transition: transform 220ms ease, box-shadow 220ms ease; }
+
+        .opp-card.turn { animation: pulse 1200ms infinite; }
+        @keyframes pulse { 0%{ box-shadow: 0 0 8px rgba(0,230,118,0.14); transform: translateY(0) } 50%{ box-shadow: 0 0 18px rgba(0,230,118,0.22); transform: translateY(-4px) } 100%{ box-shadow: 0 0 8px rgba(0,230,118,0.14); transform: translateY(0) } }
+
+        #uno-pile .uno-card { transition: transform 300ms ease, opacity 300ms ease; }
+        #uno-pile.pop { animation: pilepop 320ms ease; }
+        @keyframes pilepop { 0%{ transform: rotate(-8deg) scale(0.9); opacity:0 } 70%{ transform: rotate(2deg) scale(1.02); opacity:1 } 100%{ transform: rotate(0deg) scale(1); } }
+
+        #sys-msg button { transition: transform 120ms ease, box-shadow 120ms ease; }
+        #sys-msg button:active { transform: translateY(2px) scale(0.98); box-shadow: 0 6px 18px rgba(0,0,0,0.6); }
 
         /* Error Animation (Shake) */
         @keyframes shake {
@@ -192,7 +212,10 @@
                 <option value="override">OV (Hi&Lo)</option>
             </select>
             <input type="number" id="buyin" value="1000">
-            <button onclick="joinGame()" id="join-btn">START</button>
+            <div style="display:flex; gap:8px;">
+                <button onclick="joinGame()" id="join-btn">START</button>
+                <button onclick="joinRandom()" id="rand-btn" style="background:#444;">RANDOM</button>
+            </div>
         </div>
         <div style="color:#aaa; font-size:0.8rem;">LOBBY CHAT</div>
         <div style="background:#111; width:300px; height:150px; overflow-y:auto; padding:5px; border-radius:8px;" id="lobby-log"></div>
@@ -264,6 +287,13 @@
 
     <script>
         const socket = io();
+        // UID handling: preserve identity across sessions
+        let localUid = localStorage.getItem('nita_uid');
+        if(!localUid) { localUid = `${Date.now()}-${Math.floor(Math.random()*1000000)}`; localStorage.setItem('nita_uid', localUid); }
+        // Prefill username if available
+        const storedName = localStorage.getItem('nita_username');
+        if(storedName) document.getElementById('username').value = storedName;
+
         let roomID='', myUser='', pendingI=-1, myTurn=false;
         let selectedCards = []; // array of card ids (or indexes as string) selected for bulk play
         let selectedColorChoices = {}; // map cardId -> color for wilds
@@ -288,16 +318,53 @@
             ['lobby-log','c-global','c-room'].forEach(id=>$(id).scrollTop=$(id).scrollHeight);
         });
 
+        // Receive initial chat history (for users who join later)
+        socket.on('chatHistory', d => {
+            if(!d || !Array.isArray(d.logs)) return;
+            if(d.type === 'global') {
+                d.logs.forEach(m => {
+                    const h = `<div><strong style="color:${m.color||'#aaa'}">${m.username}</strong> ${m.text}</div>`;
+                    $('lobby-log').innerHTML += h;
+                    $('c-global').innerHTML += h;
+                });
+                ['lobby-log','c-global'].forEach(id=>$(id).scrollTop=$(id).scrollHeight);
+            }
+            // future: handle room-scoped history if server sends it
+        });
+
         // JOIN
         function joinGame() {
             const b=$('join-btn'); b.disabled=true; b.innerText="WAIT...";
             myUser=$('username').value||'GUEST'; roomID=$('room').value;
             if(!roomID){alert("Room ID Required"); b.disabled=false; return;}
-            socket.emit('joinRoom', {username:myUser, room:roomID, gameType:$('gameType').value, buyInAmount:$('buyin').value});
+            // persist username locally
+            localStorage.setItem('nita_username', myUser);
+            socket.emit('joinRoom', {username:myUser, room:roomID, gameType:$('gameType').value, buyInAmount:$('buyin').value, uid: localUid});
+        }
+
+        function joinRandom() {
+            const b = $('rand-btn'); b.disabled = true; b.innerText = 'CANCEL';
+            myUser = $('username').value || 'GUEST';
+            const gameType = $('gameType').value;
+            const buyIn = $('buyin').value;
+            localStorage.setItem('nita_username', myUser);
+            socket.emit('joinRandom', { username: myUser, gameType, buyInAmount: buyIn, uid: localUid });
+            // change behavior to cancel on next click
+            b.onclick = () => leaveRandom();
+        }
+
+        function leaveRandom() {
+            const b = $('rand-btn');
+            const gameType = $('gameType').value; const buyIn = $('buyin').value;
+            socket.emit('leaveRandom', { gameType, buyInAmount: buyIn });
+            b.disabled = false; b.innerText = 'RANDOM';
+            b.onclick = () => joinRandom();
         }
         socket.on('joined', d => {
             $('login-modal').style.display='none'; $('main-app').style.display='flex'; $('wealth').innerText=d.wealth;
             if(d.relief) alert("Relief funds applied!");
+            // store username persistently
+            if(myUser) localStorage.setItem('nita_username', myUser);
         });
         socket.on('error', m => { alert(m); $('join-btn').disabled=false; $('join-btn').innerText="START"; });
 
@@ -335,7 +402,8 @@
                 const ccc = c.color==='black'?'u-black':`u-${c.color}`;
                 const t = formatUnoText(c.type);
                 const long = t.length > 1 ? 'long-text' : '';
-                return `<div class="hand-card-wrapper"><div data-id="${cid}" id="card-${i}" class="uno-card ${ccc} ${long} ${isSelected?'selected':''}" onclick="toggleSelect('${cid}','${c.type}',${i})"><span>${t}</span></div></div>`;
+                const badge = isSelected ? `<div class="select-badge">${selectedCards.indexOf(String(cid))+1}</div>` : '';
+                return `<div class="hand-card-wrapper" style="position:relative;"><div data-id="${cid}" id="card-${i}" class="uno-card ${ccc} ${long} ${isSelected?'selected':''}" onclick="toggleSelect('${cid}','${c.type}',${i})"><span>${t}</span>${badge}</div></div>`;
             }).join('');
             
             if(d.isMyTurn) $('sys-msg').innerText = "YOUR TURN";
@@ -365,6 +433,16 @@
                     $('color-picker').style.display = 'flex';
                 } else {
                     selectedCards.push(cardId);
+                    // visual pop animation for newly selected card
+                    const el = document.querySelector(`#uno-hand [data-id="${cardId}"]`);
+                    if(el) {
+                        // add temporary pop to badge (will be created in refreshHandSelection)
+                        setTimeout(()=>{
+                            const b = el.querySelector('.select-badge');
+                            if(b) { b.classList.remove('pop'); void b.offsetWidth; b.classList.add('pop'); }
+                        }, 60);
+                        el.classList.add('selected');
+                    }
                 }
             }
             refreshHandSelection();
@@ -376,7 +454,21 @@
             const wrappers = document.querySelectorAll('#uno-hand [data-id]');
             wrappers.forEach(el => {
                 const id = String(el.getAttribute('data-id'));
-                el.classList.toggle('selected', selectedCards.includes(id));
+                const isSel = selectedCards.includes(id);
+                el.classList.toggle('selected', isSel);
+                // badge update
+                let badge = el.querySelector('.select-badge');
+                if(isSel) {
+                    if(!badge) { badge = document.createElement('div'); badge.className='select-badge'; el.appendChild(badge); }
+                    badge.innerText = String(selectedCards.indexOf(id) + 1);
+                    // ensure pop animation when newly created
+                    if(!badge.classList.contains('pop')) {
+                        badge.classList.add('pop');
+                        setTimeout(()=>badge.classList.remove('pop'), 350);
+                    }
+                } else {
+                    if(badge) badge.remove();
+                }
             });
         }
 
