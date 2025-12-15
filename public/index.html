@@ -57,7 +57,14 @@
         }
         .opp-card.turn { border-color: var(--accent); box-shadow: 0 0 15px var(--accent); background: rgba(0, 230, 118, 0.1); transform: scale(1.05); }
         .opp-name { font-size: 0.7rem; color: #aaa; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 80px; }
-        .opp-count { font-size: 1.5rem; font-weight: 800; color: #fff; }
+        .opp-count { font-size: 1.5rem; font-weight: 800; color: #fff; transition: transform 360ms cubic-bezier(.2,.9,.2,1), opacity 260ms ease; }
+        .opp-count.count-pop { transform: translateY(-8px) scale(1.12); opacity:0.92; }
+        .opp-count.count-down { color:#ff8a80; }
+        .opp-count.count-up { color:#a7ffeb; }
+        .opp-card.turn-flash { animation: turnblink 900ms ease; }
+        @keyframes turnblink { 0%{ transform: translateY(0) scale(1); box-shadow: 0 0 6px rgba(0,230,118,0.12);} 40%{ transform: translateY(-6px) scale(1.06); box-shadow: 0 0 30px rgba(0,230,118,0.24);} 100%{ transform: translateY(0) scale(1); } }
+        .color-ring.turn-flash { animation: ringflash 900ms ease; }
+        @keyframes ringflash { 0%{ box-shadow: 0 0 10px rgba(255,255,255,0.02);} 50%{ box-shadow: 0 0 40px rgba(255,255,255,0.12);} 100%{ box-shadow: 0 0 10px rgba(255,255,255,0.02);} }
 
         /* Center Pile (Draw & Play) */
         .center-area {
@@ -305,6 +312,8 @@
         let selectedCards = []; // array of card ids (or indexes as string) selected for bulk play
         let selectedColorChoices = {}; // map cardId -> color for wilds
         const $ = id => document.getElementById(id);
+        let prevUnoPlayersMap = {}; // username -> handCount
+        let prevTurnUsername = null;
 
         // CHAT
         function sendLobby() { const t=$('lobby-in').value; if(t){socket.emit('sendChat',{type:'global',username:$('username').value,text:t});$('lobby-in').value='';} }
@@ -392,8 +401,8 @@
             myTurn = d.isMyTurn;
             const ops = d.players.filter(p=>p.username!==myUser);
             $('uno-opponents').innerHTML = ops.map(p => `
-                <div class="opp-card ${p.isTurn?'turn':''}">
-                    <div class="opp-name">${p.username}</div>
+                <div class="opp-card ${p.isTurn?'turn':''}" data-username="${escapeHtml(p.username)}">
+                    <div class="opp-name">${escapeHtml(p.username)}</div>
                     <div class="opp-count">${p.handCount}</div>
                 </div>`).join('');
             
@@ -403,6 +412,36 @@
             
             $('uno-pile').innerHTML = `<div class="uno-card ${cc}"><span>${txt}</span></div>`;
             $('color-ring').className = `color-ring ring-${d.currentColor}`;
+
+            // --- animations for other players' plays and count changes ---
+            // Check for handCount changes to animate plays
+            d.players.forEach(p => {
+                const prev = prevUnoPlayersMap[p.username];
+                if(typeof prev !== 'undefined' && p.handCount < prev) {
+                    // played card(s): animate one fly per decrement
+                    const delta = prev - p.handCount;
+                    for(let i=0;i<delta;i++) animateOpponentPlay(p.username);
+                    // animate number change
+                    animateCountChange(p.username, p.handCount);
+                } else if(typeof prev !== 'undefined' && p.handCount > prev) {
+                    // gained cards (draw) - animate increase
+                    animateCountChange(p.username, p.handCount, true);
+                }
+            });
+
+            // Turn change effect: flash when turn rotates
+            const newTurnPlayer = d.players.find(p=>p.isTurn);
+            if(newTurnPlayer) {
+                if(prevTurnUsername && prevTurnUsername !== newTurnPlayer.username) {
+                    // flash ring and highlight the new player's opp-card
+                    flashTurn(newTurnPlayer.username);
+                }
+                prevTurnUsername = newTurnPlayer.username;
+            }
+
+            // update prev map
+            prevUnoPlayersMap = {};
+            d.players.forEach(p => prevUnoPlayersMap[p.username] = p.handCount);
 
             $('uno-hand').innerHTML = d.myHand.map((c, i) => {
                 const cid = c.id || `${i}`;
@@ -443,6 +482,105 @@
             if(type==='skip') return '⊘';
             if(type==='reverse') return '⇄';
             return type.toUpperCase();
+        }
+
+        // helper: HTML escape for attributes
+        function escapeHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+        function animateOpponentPlay(username) {
+            // find opponent card area
+            const el = document.querySelector(`#uno-opponents [data-username="${CSS.escape(username)}"]`);
+            const pile = $('uno-pile').querySelector('.uno-card');
+            if(!el || !pile) return;
+            const rect = el.getBoundingClientRect();
+            const pileRect = pile.getBoundingClientRect();
+
+            const clone = document.createElement('div');
+            clone.className = 'fly-card u-back';
+            clone.style.left = rect.left + 'px'; clone.style.top = rect.top + 'px';
+            clone.style.width = Math.min(70, rect.width) + 'px'; clone.style.height = Math.min(110, rect.height) + 'px';
+            clone.style.position = 'absolute'; clone.style.opacity = '0.95';
+            document.body.appendChild(clone);
+
+            const dx = (pileRect.left + pileRect.width/2) - (rect.left + rect.width/2);
+            const dy = (pileRect.top + pileRect.height/2) - (rect.top + rect.height/2);
+            requestAnimationFrame(()=>{ clone.style.transform = `translate(${dx}px, ${dy}px) scale(0.9)`; clone.style.opacity='0.0'; });
+            clone.addEventListener('transitionend', ()=>{ clone.remove(); });
+            setTimeout(()=>{ if(document.body.contains(clone)) clone.remove(); }, 700);
+        }
+
+        function animateCountChange(username, newCount, increase=false) {
+            const el = document.querySelector(`#uno-opponents [data-username="${CSS.escape(username)}"] .opp-count`);
+            if(!el) return;
+            el.innerText = newCount;
+            el.classList.add('count-pop');
+            if(increase) el.classList.add('count-up'); else el.classList.add('count-down');
+            setTimeout(()=>{ el.classList.remove('count-pop'); el.classList.remove('count-up'); el.classList.remove('count-down'); }, 600);
+        }
+
+        function flashTurn(username) {
+            // highlight new turn player's opp-card briefly and pulse ring
+            const el = document.querySelector(`#uno-opponents [data-username="${CSS.escape(username)}"]`);
+            if(el) {
+                el.classList.add('turn-flash'); setTimeout(()=>el.classList.remove('turn-flash'), 900);
+            }
+            const ring = $('color-ring');
+            ring.classList.add('turn-flash'); setTimeout(()=>ring.classList.remove('turn-flash'), 900);
+        }
+
+        // Handle server events for actual card plays and draws
+        socket.on('cardPlayed', d => {
+            // animate face card from opponent area to pile
+            if(d.username === myUser) return; // local plays already animated locally
+            animatePlayedFaceCard(d.username, d.card);
+        });
+
+        socket.on('cardDrawn', d => {
+            // animate pile -> opponent (back face) when someone draws
+            if(d.username === myUser) return; // local draw handled by own UI
+            // play as many back-cards as drawn
+            const count = Array.isArray(d.cards) ? d.cards.length : 1;
+            for(let i=0;i<count;i++) setTimeout(()=> animatePileToOpponent(d.username), i*120);
+        });
+
+        function animatePlayedFaceCard(username, card) {
+            const el = document.querySelector(`#uno-opponents [data-username="${CSS.escape(username)}"]`);
+            const pile = $('uno-pile').querySelector('.uno-card');
+            if(!el || !pile) return;
+            const rect = el.getBoundingClientRect();
+            const pileRect = pile.getBoundingClientRect();
+            const clone = document.createElement('div');
+            const cls = card.color==='black'?'u-black':`u-${card.color}`;
+            clone.className = `fly-card ${cls}`;
+            clone.innerHTML = `<span>${formatUnoText(card.type)}</span>`;
+            clone.style.left = rect.left + 'px'; clone.style.top = rect.top + 'px';
+            clone.style.width = Math.min(80, rect.width) + 'px'; clone.style.height = Math.min(120, rect.height) + 'px';
+            clone.style.position = 'absolute'; clone.style.opacity = '0.98';
+            document.body.appendChild(clone);
+            const dx = (pileRect.left + pileRect.width/2) - (rect.left + rect.width/2);
+            const dy = (pileRect.top + pileRect.height/2) - (rect.top + rect.height/2);
+            requestAnimationFrame(()=>{ clone.style.transform = `translate(${dx}px, ${dy}px) scale(0.95)`; clone.style.opacity='0.0'; });
+            clone.addEventListener('transitionend', ()=>{ clone.remove(); });
+            setTimeout(()=>{ if(document.body.contains(clone)) clone.remove(); }, 700);
+        }
+
+        function animatePileToOpponent(username) {
+            const pile = $('uno-pile').querySelector('.uno-card');
+            const el = document.querySelector(`#uno-opponents [data-username="${CSS.escape(username)}"]`);
+            if(!el || !pile) return;
+            const pileRect = pile.getBoundingClientRect();
+            const rect = el.getBoundingClientRect();
+            const clone = document.createElement('div');
+            clone.className = 'fly-card u-back';
+            clone.style.left = pileRect.left + 'px'; clone.style.top = pileRect.top + 'px';
+            clone.style.width = Math.min(80, pileRect.width) + 'px'; clone.style.height = Math.min(120, pileRect.height) + 'px';
+            clone.style.position = 'absolute'; clone.style.opacity = '0.95';
+            document.body.appendChild(clone);
+            const dx = (rect.left + rect.width/2) - (pileRect.left + pileRect.width/2);
+            const dy = (rect.top + rect.height/2) - (pileRect.top + pileRect.height/2);
+            requestAnimationFrame(()=>{ clone.style.transform = `translate(${dx}px, ${dy}px) scale(0.95)`; clone.style.opacity='0.0'; });
+            clone.addEventListener('transitionend', ()=>{ clone.remove(); });
+            setTimeout(()=>{ if(document.body.contains(clone)) clone.remove(); }, 700);
         }
 
         function toggleSelect(cardId, type, index) {

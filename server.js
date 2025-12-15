@@ -353,6 +353,8 @@ function processUnoMove(room, playerId, cardIndex, colorChoice) {
     // Play
     p.unoHand.splice(cardIndex, 1);
     r.unoPile.push(card);
+    // notify clients what card was played (so they can animate the face)
+    io.to(room).emit('cardPlayed', { username: p.username, card: { color: card.color, type: card.type } });
 
     // If a number card was played, allow automatic additional matching-number cards (server-side fallback)
     if (/^\d+$/.test(card.type)) {
@@ -452,6 +454,9 @@ function processUnoMultiMove(room, playerId, cardIds, colorChoices) {
         const card = p.unoHand.splice(i, 1)[0];
         r.unoPile.push(card);
 
+        // notify clients of the exact card played
+        io.to(room).emit('cardPlayed', { username: p.username, card: { color: card.color, type: card.type } });
+
         if (card.color === 'black') r.unoColor = colorChoice || 'red';
         else r.unoColor = card.color;
 
@@ -490,7 +495,8 @@ function socketEmitToPlayer(socketId, ev, msg) {
 function processUnoDraw(room, playerId) {
     const r = rooms[room]; const p = r.players[r.unoTurn]; if(p.id !== playerId) return;
     if(r.unoDrawStack > 0) {
-        drawCards(r, p, r.unoDrawStack);
+        const drawn = drawCards(r, p, r.unoDrawStack);
+        if(drawn.length>0) io.to(room).emit('cardDrawn', { username: p.username, cards: drawn.map(c=>({ color:c.color, type:c.type })) });
         r.unoDrawStack = 0;
         // drawing from stack counts as action and ends turn
         p.hasDrawnThisTurn = true;
@@ -505,9 +511,9 @@ function processUnoDraw(room, playerId) {
     }
 
     // Normal single draw
-    drawCards(r, p, 1);
+    const drawn = drawCards(r, p, 1);
     // check the drawn card; if it cannot be played, end turn immediately
-    const drawn = p.unoHand[p.unoHand.length - 1];
+    const drawnCard = drawn && drawn.length? drawn[0] : null;
     if (!drawn) {
         // nothing drawn (deck empty) -> just update and advance
         p.hasDrawnThisTurn = true;
@@ -516,7 +522,10 @@ function processUnoDraw(room, playerId) {
         return;
     }
 
-    if (canPlayUnoCard(r, drawn)) {
+    // emit drawn event for animation (clients may show back->hand animation)
+    if(drawn.length>0) io.to(room).emit('cardDrawn', { username: p.username, cards: drawn.map(c=>({ color:c.color, type:c.type })) });
+
+    if (drawnCard && canPlayUnoCard(r, drawnCard)) {
         // player may play the drawn card; mark as drawn and update state
         p.hasDrawnThisTurn = true;
         updateUnoState(room);
@@ -530,10 +539,16 @@ function processUnoDraw(room, playerId) {
 }
 
 function drawCards(r, p, count) {
+    const drawn = [];
     for(let i=0; i<count; i++) {
         if(r.unoDeck.length === 0) { const top = r.unoPile.pop(); r.unoDeck = shuffle(r.unoPile); r.unoPile = [top]; }
-        if(r.unoDeck.length > 0) p.unoHand.push(r.unoDeck.pop());
+        if(r.unoDeck.length > 0) {
+            const card = r.unoDeck.pop();
+            p.unoHand.push(card);
+            drawn.push(card);
+        }
     }
+    return drawn;
 }
 
 function advanceUnoTurn(room) { const r = rooms[room]; r.unoTurn = getNextTurn(r);
