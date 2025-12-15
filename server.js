@@ -635,7 +635,7 @@ function processUnoDraw(room, playerId) {
         // player may play the drawn card; mark as drawn and update state
         p.hasDrawnThisTurn = true;
         updateUnoState(room);
-        if(p.isCpu) setTimeout(() => cpuTryPlayAfterDraw(room, p), 1000);
+        if(p.isCpu) setTimeout(() => cpuTryPlayAfterDraw(room, p), 1800);
     } else {
         // cannot play, end turn
         p.hasDrawnThisTurn = true;
@@ -670,7 +670,7 @@ function advanceUnoTurn(room) {
     updateUnoState(room); checkCpuTurn(room);
 }
 function getNextTurn(r) { return (r.unoTurn + r.unoDirection + r.players.length) % r.players.length; }
-function checkCpuTurn(room) { const r = rooms[room]; if(!r.gameActive) return; const p = r.players[r.unoTurn]; if(p.isCpu) setTimeout(() => runCpuLogic(room, p), 1500); }
+function checkCpuTurn(room) { const r = rooms[room]; if(!r.gameActive) return; const p = r.players[r.unoTurn]; if(p.isCpu) setTimeout(() => runCpuLogic(room, p), 2400); }
 
 function runCpuLogic(room, p) {
     const r = rooms[room]; if(!r.gameActive) return;
@@ -686,8 +686,8 @@ function runCpuLogic(room, p) {
     idx = p.unoHand.findIndex(c => c.color !== 'black' && canPlayUnoCard(r, c));
     if(idx === -1) idx = p.unoHand.findIndex(c => c.color === 'black' && canPlayUnoCard(r, c));
     
-    if(idx !== -1) processUnoMove(room, p.id, idx, fav);
-    else processUnoDraw(room, p.id);
+    if(idx !== -1) setTimeout(() => processUnoMove(room, p.id, idx, fav), 400);
+    else setTimeout(() => processUnoDraw(room, p.id), 400);
 }
 
 function cpuTryPlayAfterDraw(room, p) {
