@@ -27,7 +27,11 @@ function getUserRecord(uid, username) {
 }
 let randomQueues = {}; // keyed by gameType -> array of { socketId, username, buyIn }
 let globalChatLogs = [];
-const LOG_RETENTION = 3600000;
+const LOG_RETENTION = 24 * 3600000; // 24 hours
+const DATA_DIR = path.join(__dirname, 'data');
+const GLOBAL_CHAT_FILE = path.join(DATA_DIR, 'globalChat.json');
+const USERS_FILE = path.join(DATA_DIR, 'users.json');
+const SAVE_INTERVAL = 30 * 1000; // persist every 30s
 const INITIAL_WEALTH = 3000;
 const RELIEF_THRESHOLD = 100;
 const RELIEF_AMOUNT = 1000;
@@ -36,6 +40,40 @@ setInterval(() => {
     const cut = Date.now() - LOG_RETENTION;
     globalChatLogs = globalChatLogs.filter(l => l.timestamp > cut);
 }, 60000);
+
+// Persistence helpers (simple JSON files)
+const fs = require('fs');
+async function ensureDataDir() {
+    try { await fs.promises.mkdir(DATA_DIR, { recursive: true }); } catch(e){}
+}
+
+async function loadPersistentData() {
+    await ensureDataDir();
+    try {
+        const txt = await fs.promises.readFile(GLOBAL_CHAT_FILE, 'utf8');
+        const arr = JSON.parse(txt);
+        if(Array.isArray(arr)) globalChatLogs = arr;
+    } catch(e) {}
+    try {
+        const txt = await fs.promises.readFile(USERS_FILE, 'utf8');
+        const obj = JSON.parse(txt);
+        if(obj && typeof obj === 'object') usersByUid = obj;
+    } catch(e) {}
+}
+
+async function savePersistentData() {
+    try {
+        await ensureDataDir();
+        await fs.promises.writeFile(GLOBAL_CHAT_FILE, JSON.stringify(globalChatLogs.slice(-1000)), 'utf8');
+        await fs.promises.writeFile(USERS_FILE, JSON.stringify(usersByUid), 'utf8');
+    } catch(e) { console.error('savePersistentData error', e); }
+}
+
+// Periodic save
+setInterval(() => { savePersistentData(); }, SAVE_INTERVAL);
+
+// load on start
+loadPersistentData().then(()=> console.log('Persistent data loaded')).catch(()=>{});
 
 // --- UNO HELPERS ---
 const UNO_COLORS = ['red', 'yellow', 'green', 'blue'];
@@ -85,6 +123,8 @@ function getBjScore(hand) {
 io.on('connection', (socket) => {
     sendRanking(socket);
     socket.emit('chatHistory', { type: 'global', logs: globalChatLogs });
+    // also send persisted users record snapshot
+    socket.emit('usersSnapshot', { users: usersByUid });
 
     // ensure removal from random queues on disconnect
     socket.on('disconnecting', () => {
@@ -93,10 +133,20 @@ io.on('connection', (socket) => {
         }
     });
 
+        // UNO call from client
+        socket.on('unoCall', ({ room }) => {
+            const r = rooms[room]; if(!r) return;
+            const p = r.players.find(pl => pl.id === socket.id);
+            if(p) {
+                p.unoCalled = true;
+                io.to(room).emit('unoCalled', { username: p.username });
+            }
+        });
+
     // Chat
     socket.on('sendChat', (d) => {
         const msg = { id:Date.now(), timestamp:Date.now(), username:d.username||'GUEST', text:d.text, color:d.color, type:d.type };
-        if(d.type==='global') { globalChatLogs.push(msg); io.emit('chatMsg', msg); }
+        if(d.type==='global') { globalChatLogs.push(msg); io.emit('chatMsg', msg); savePersistentData(); }
         else if(d.type==='room' && rooms[d.room]) { io.to(d.room).emit('chatMsg', msg); }
     });
 
@@ -127,6 +177,7 @@ io.on('connection', (socket) => {
         let fee = parseInt(buyInAmount); if(isNaN(fee)||fee<100) fee=100;
         if(userRec.totalWealth < fee) return socket.emit('error', '資金不足です');
         userRec.totalWealth -= fee;
+        savePersistentData();
 
         const colors = ['#FF6B6B', '#4ECDC4', '#FFE66D', '#FFFFFF', '#FF9FF3', '#54A0FF'];
         r.players.push({
@@ -180,6 +231,7 @@ io.on('connection', (socket) => {
                 let fee = parseInt(entry.buyIn); if(isNaN(fee)||fee<100) fee=100;
                 if(userRec.totalWealth < fee) return sock.emit('error', '資金不足です');
                 userRec.totalWealth -= fee;
+                savePersistentData();
 
                 const colors = ['#FF6B6B', '#4ECDC4', '#FFE66D', '#FFFFFF', '#FF9FF3', '#54A0FF'];
                 const player = {
@@ -222,9 +274,11 @@ io.on('connection', (socket) => {
                     if(p.uid && usersByUid[p.uid]) {
                         usersByUid[p.uid].totalWealth += p.score;
                         usersByUid[p.uid].cumulativeScore += (p.score - p.initialScore);
+                        savePersistentData();
                     } else if(userDB[p.username]) {
                         userDB[p.username].totalWealth += p.score;
                         userDB[p.username].cumulativeScore += (p.score - p.initialScore);
+                        savePersistentData();
                     }
                 }
                 r.players.splice(idx,1);
@@ -324,6 +378,7 @@ function startUnoMatch(room) {
         p.unoHand = []; 
         for(let i=0; i<7; i++) p.unoHand.push(r.unoDeck.pop()); 
         p.hasDrawnThisTurn = false;
+        p.unoCalled = false;
     });
     
     updateUnoState(room);
@@ -349,7 +404,9 @@ function processUnoMove(room, playerId, cardIndex, colorChoice) {
     
     const card = p.unoHand[cardIndex];
     if(!card || !canPlayUnoCard(r, card)) return; // Invalid move
-    
+    // prevent finishing with a non-number card
+    if(p.unoHand.length === 1 && !(/^\d+$/.test(card.type))) { socketEmitToPlayer(playerId,'error','記号上がりはできません'); return; }
+
     // Play
     p.unoHand.splice(cardIndex, 1);
     r.unoPile.push(card);
@@ -379,19 +436,36 @@ function processUnoMove(room, playerId, cardIndex, colorChoice) {
     
     // Win
     if(p.unoHand.length === 0) {
+        // mark player finished but continue match
+        p.finished = true;
         let pool = 0;
         r.players.forEach(pl => { 
             if(pl !== p) { let pen = 200; if(pl.score >= pen) { pl.score -= pen; pool += pen; } else { pool += pl.score; pl.score = 0; } } 
         });
         p.score += pool;
-        io.to(room).emit('gameOver', { winner: p.color, msg: `WINNER: ${p.username} (+${pool})` });
-        r.gameActive = false;
-        r.players = r.players.filter(pl => !pl.isCpu);
-        r.players.forEach(pl => pl.ready = false);
-        return;
+        io.to(room).emit('playerFinished', { username: p.username, reward: pool });
+        // if only one active (not finished & not cpu) remains, end match
+        const active = r.players.filter(pl => !pl.finished && !pl.isCpu);
+        if(active.length <= 1) {
+            const winners = r.players.filter(pl => !pl.isCpu).sort((a,b)=>b.score-a.score);
+            const w = winners[0] || p;
+            io.to(room).emit('gameOver', { winner: w.color, msg: `WINNER: ${w.username}` });
+            r.gameActive = false;
+            r.players = r.players.filter(pl => !pl.isCpu);
+            r.players.forEach(pl => pl.ready = false);
+            return;
+        }
+        // otherwise continue match without removing room
     }
     // reset draw flag when a play happens
     p.hasDrawnThisTurn = false;
+
+    // UNO penalty: if player has 1 card and did NOT press UNO call before ending, force draw 2
+    if(p.unoHand.length === 1 && !p.unoCalled) {
+        const drawn = drawCards(r, p, 2);
+        if(drawn.length>0) io.to(room).emit('cardDrawn', { username: p.username, cards: drawn.map(c=>({ color:c.color, type:c.type })) });
+        io.to(room).emit('unoPenalty', { username: p.username });
+    }
 
     advanceUnoTurn(room);
 }
@@ -444,6 +518,13 @@ function processUnoMultiMove(room, playerId, cardIds, colorChoices) {
         else if (card.type === 'draw4') tempDrawStack += 4;
     }
 
+    // prevent symbol finish: if after playing all candidates player's hand would be empty and last card is not numeric, reject
+    const wouldRemain = p.unoHand.length - candidates.length;
+    if(wouldRemain === 0) {
+        const lastCard = candidates[candidates.length-1].card;
+        if(!(/^\d+$/.test(lastCard.type))) { socketEmitToPlayer(playerId, 'error', '記号上がりはできません'); return; }
+    }
+
     // All validated; now actually apply the plays in order
     for (let k = 0; k < candidates.length; k++) {
         const cid = cardIds[k];
@@ -467,17 +548,35 @@ function processUnoMultiMove(room, playerId, cardIds, colorChoices) {
     }
 
     // Win check
+    // Win check: mark finished and continue match; only end when <=1 active left
     if (p.unoHand.length === 0) {
+        p.finished = true;
         let pool = 0;
         r.players.forEach(pl => { 
             if(pl !== p) { let pen = 200; if(pl.score >= pen) { pl.score -= pen; pool += pen; } else { pool += pl.score; pl.score = 0; } } 
         });
         p.score += pool;
-        io.to(room).emit('gameOver', { winner: p.color, msg: `WINNER: ${p.username} (+${pool})` });
-        r.gameActive = false;
-        r.players = r.players.filter(pl => !pl.isCpu);
-        r.players.forEach(pl => pl.ready = false);
-        return;
+        io.to(room).emit('playerFinished', { username: p.username, reward: pool });
+        const active = r.players.filter(pl => !pl.finished && !pl.isCpu);
+        if(active.length <= 1) {
+            const winners = r.players.filter(pl => !pl.isCpu).sort((a,b)=>b.score-a.score);
+            const w = winners[0] || p;
+            io.to(room).emit('gameOver', { winner: w.color, msg: `WINNER: ${w.username}` });
+            r.gameActive = false;
+            r.players = r.players.filter(pl => !pl.isCpu);
+            r.players.forEach(pl => pl.ready = false);
+            return;
+        }
+        // otherwise continue
+    }
+
+    // reset draw flag when a play happens
+    p.hasDrawnThisTurn = false;
+    // UNO penalty check: if player now has 1 card and didn't call UNO, force draw 2
+    if(p.unoHand.length === 1 && !p.unoCalled) {
+        const drawn2 = drawCards(r, p, 2);
+        if(drawn2.length>0) io.to(room).emit('cardDrawn', { username: p.username, cards: drawn2.map(c=>({ color:c.color, type:c.type })) });
+        io.to(room).emit('unoPenalty', { username: p.username });
     }
 
     // Advance turn once after batch
@@ -552,8 +651,8 @@ function drawCards(r, p, count) {
 }
 
 function advanceUnoTurn(room) { const r = rooms[room]; r.unoTurn = getNextTurn(r);
-    // reset draw flag for the new current player
-    r.players.forEach(pl => pl.hasDrawnThisTurn = false);
+    // reset draw flag and UNO-call flag for players
+    r.players.forEach(pl => { pl.hasDrawnThisTurn = false; pl.unoCalled = false; });
     updateUnoState(room); checkCpuTurn(room); }
 function getNextTurn(r) { return (r.unoTurn + r.unoDirection + r.players.length) % r.players.length; }
 function checkCpuTurn(room) { const r = rooms[room]; if(!r.gameActive) return; const p = r.players[r.unoTurn]; if(p.isCpu) setTimeout(() => runCpuLogic(room, p), 1500); }

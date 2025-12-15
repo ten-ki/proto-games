@@ -200,17 +200,30 @@
         #sys-msg button { pointer-events: auto; padding: 10px 30px; font-size: 1.2rem; background: var(--accent); border: none; border-radius: 50px; box-shadow: 0 0 20px var(--accent); cursor: pointer; color: #000; font-weight: 800; }
 
         /* Mobile Responsive */
-        @media (max-width: 768px) {
+        @media (max-width: 980px) {
             #main-app { flex-direction: column; padding: 0; gap: 0; }
             #game-view { flex: 2; border-radius: 0; border: none; border-bottom: 1px solid #333; }
-            #sidebar { flex: 1; border-radius: 0; min-width: auto; }
-            .my-hand { bottom: 10px; padding: 0 10px; }
-            .hand-card-wrapper { width: 60px; height: 90px; margin-left: -25px; }
-            .uno-card { width: 60px; height: 90px; font-size: 1.5rem; border-width: 2px; }
-            .uno-card span { font-size: 1.5rem; }
+            #sidebar { flex: 1; border-radius: 0; min-width: auto; width: 100%; }
+            .opp-container { height: auto; top: 8px; flex-wrap: wrap; gap:6px; }
+            .opp-card { min-width: 60px; padding:6px 8px; }
+            .my-hand { bottom: 8px; padding: 0 6px; height: 110px; }
+            .hand-card-wrapper { width: clamp(56px, 14vw, 80px); height: clamp(86px, 19vw, 120px); margin-left: -30px; }
+            .uno-card { width: clamp(56px, 13vw, 80px); height: clamp(86px, 19vw, 120px); font-size: clamp(1rem, 3.2vw, 2.5rem); border-width: 2px; }
+            .uno-card span { font-size: clamp(1rem, 3vw, 2rem); }
             .center-area { transform: translate(-50%, -50%); } 
-            .color-ring { width: 160px; height: 120px; }
+            .color-ring { width: clamp(120px, 32vw, 220px); height: clamp(100px, 24vw, 160px); }
+            #sidebar { order: 2; }
+            #game-view { order: 1; }
         }
+
+        /* Large screens adjustments */
+        @media (min-width: 1400px) {
+            .hand-card-wrapper { margin-left: -45px; }
+            .uno-card { width: 96px; height: 144px; }
+        }
+
+        /* Ensure container fits and doesn't overflow horizontally */
+        #main-app { max-width: 1600px; margin: 0 auto; }
     </style>
 </head>
 <body>
@@ -314,6 +327,8 @@
         const $ = id => document.getElementById(id);
         let prevUnoPlayersMap = {}; // username -> handCount
         let prevTurnUsername = null;
+        let lastPlayedDrawType = null;
+        let unoCalledLocal = false;
 
         // CHAT
         function sendLobby() { const t=$('lobby-in').value; if(t){socket.emit('sendChat',{type:'global',username:$('username').value,text:t});$('lobby-in').value='';} }
@@ -473,6 +488,17 @@
             
             if(d.isMyTurn) $('sys-msg').innerText = "YOUR TURN";
             else $('sys-msg').innerText = "";
+
+            // show UNO call button when player has exactly 1 card
+            const existingUnoBtn = document.getElementById('uno-call-btn');
+            if(d.isMyTurn && d.myHand && d.myHand.length === 1) {
+                if(!existingUnoBtn) {
+                    const b = document.createElement('button'); b.id='uno-call-btn'; b.innerText='UNO!'; b.onclick = () => {
+                        unoCalledLocal = true; socket.emit('unoCall', { room: roomID }); b.disabled = true; b.innerText='CALLED';
+                    };
+                    document.getElementById('sys-msg').appendChild(b);
+                }
+            } else if(existingUnoBtn) existingUnoBtn.remove();
         });
 
         function formatUnoText(type) {
@@ -509,6 +535,22 @@
             setTimeout(()=>{ if(document.body.contains(clone)) clone.remove(); }, 700);
         }
 
+
+        function playDrawEffect(type) {
+            const overlay = document.createElement('div'); overlay.style.position='fixed'; overlay.style.left=0; overlay.style.top=0; overlay.style.right=0; overlay.style.bottom=0; overlay.style.zIndex=2000; overlay.style.pointerEvents='none';
+            overlay.innerHTML = `<div style="position:absolute;left:50%;top:20%;transform:translateX(-50%);padding:18px 26px;border-radius:12px;background:linear-gradient(90deg,#ff5252,#448aff);font-weight:800;color:#000;box-shadow:0 10px 40px rgba(0,0,0,0.6);">${type.toUpperCase()}!</div>`;
+            document.body.appendChild(overlay);
+            setTimeout(()=>{ overlay.style.transition='opacity 360ms ease'; overlay.style.opacity='0'; }, 600);
+            setTimeout(()=>overlay.remove(), 1100);
+        }
+
+        function playChainEffect(type) {
+            const overlay = document.createElement('div'); overlay.style.position='fixed'; overlay.style.left=0; overlay.style.top=0; overlay.style.right=0; overlay.style.bottom=0; overlay.style.zIndex=2000; overlay.style.pointerEvents='none';
+            overlay.innerHTML = `<div style="position:absolute;left:50%;top:20%;transform:translateX(-50%);padding:20px 30px;border-radius:14px;background:radial-gradient(circle,#ffd54f,#ff5252);font-weight:900;color:#000;box-shadow:0 18px 60px rgba(0,0,0,0.7);">CHAIN ${type.toUpperCase()}!</div>`;
+            document.body.appendChild(overlay);
+            setTimeout(()=>{ overlay.style.transition='opacity 360ms ease'; overlay.style.opacity='0'; }, 900);
+            setTimeout(()=>overlay.remove(), 1400);
+        }
         function animateCountChange(username, newCount, increase=false) {
             const el = document.querySelector(`#uno-opponents [data-username="${CSS.escape(username)}"] .opp-count`);
             if(!el) return;
@@ -532,6 +574,14 @@
         socket.on('cardPlayed', d => {
             // animate face card from opponent area to pile
             if(d.username === myUser) return; // local plays already animated locally
+            // draw-type effects
+            if(d.card.type === 'draw2' || d.card.type === 'draw4') {
+                if(lastPlayedDrawType === d.card.type) playChainEffect(d.card.type);
+                else playDrawEffect(d.card.type);
+                lastPlayedDrawType = d.card.type;
+            } else {
+                lastPlayedDrawType = null;
+            }
             animatePlayedFaceCard(d.username, d.card);
         });
 
@@ -582,6 +632,22 @@
             clone.addEventListener('transitionend', ()=>{ clone.remove(); });
             setTimeout(()=>{ if(document.body.contains(clone)) clone.remove(); }, 700);
         }
+
+        // server announces someone called UNO
+        socket.on('unoCalled', d => {
+            // flashy banner for all players
+            const b = document.createElement('div'); b.style.position='fixed'; b.style.left='50%'; b.style.top='10%'; b.style.transform='translateX(-50%)'; b.style.zIndex=3000; b.style.padding='14px 22px'; b.style.borderRadius='12px'; b.style.background='linear-gradient(90deg,#ffeb3b,#ff7043)'; b.style.color='#000'; b.style.fontWeight='900'; b.innerText = `${d.username} called UNO!`;
+            document.body.appendChild(b);
+            setTimeout(()=>{ b.style.transition='opacity 400ms ease'; b.style.opacity='0'; }, 1200);
+            setTimeout(()=>b.remove(), 1700);
+        });
+
+        socket.on('unoPenalty', d => {
+            const b = document.createElement('div'); b.style.position='fixed'; b.style.left='50%'; b.style.top='14%'; b.style.transform='translateX(-50%)'; b.style.zIndex=3000; b.style.padding='12px 18px'; b.style.borderRadius='10px'; b.style.background='rgba(255,0,0,0.9)'; b.style.color='#fff'; b.style.fontWeight='800'; b.innerText = `${d.username} failed to call UNO — drew 2 cards!`;
+            document.body.appendChild(b);
+            setTimeout(()=>{ b.style.transition='opacity 400ms ease'; b.style.opacity='0'; }, 1800);
+            setTimeout(()=>b.remove(), 2300);
+        });
 
         function toggleSelect(cardId, type, index) {
             if(!myTurn) return;
