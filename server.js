@@ -379,6 +379,8 @@ function startUnoMatch(room) {
         for(let i=0; i<7; i++) p.unoHand.push(r.unoDeck.pop()); 
         p.hasDrawnThisTurn = false;
         p.unoCalled = false;
+        p.playedThisTurnCount = 0;
+        p.lastPlayedType = null;
     });
     
     updateUnoState(room);
@@ -401,9 +403,31 @@ function canPlayUnoCard(r, card) {
 function processUnoMove(room, playerId, cardIndex, colorChoice) {
     const r = rooms[room]; if(!r || !r.gameActive) return;
     const p = r.players[r.unoTurn]; if(p.id !== playerId) return;
-    
+    // initialize per-turn counters if missing
+    if(typeof p.playedThisTurnCount !== 'number') p.playedThisTurnCount = 0;
+    if(typeof p.lastPlayedType === 'undefined') p.lastPlayedType = null;
+
     const card = p.unoHand[cardIndex];
-    if(!card || !canPlayUnoCard(r, card)) return; // Invalid move
+    if(!card) return;
+
+    // If this is not the first card in this turn, only allow same `type` as previously played
+    if(p.playedThisTurnCount > 0) {
+        if(String(card.type) !== String(p.lastPlayedType)) {
+            socketEmitToPlayer(playerId, 'error', 'このターンでは同じ種類のカードのみ出せます');
+            return;
+        }
+        // additionally ensure card is playable relative to previous card on pile
+        // previous card is r.unoPile[r.unoPile.length-1]
+        const top = r.unoPile[r.unoPile.length-1];
+        if(r.unoDrawStack > 0) {
+            if(!(top.type === 'draw2' && card.type === 'draw2') && !(top.type === 'draw4' && card.type === 'draw4')) {
+                socketEmitToPlayer(playerId, 'error', 'ドロースタックに対してこのカードは出せません');
+                return;
+            }
+        }
+    } else {
+        if(!canPlayUnoCard(r, card)) return; // Invalid first move
+    }
     // prevent finishing with a non-number card
     if(p.unoHand.length === 1 && !(/^\d+$/.test(card.type))) { socketEmitToPlayer(playerId,'error','記号上がりはできません'); return; }
 
@@ -425,13 +449,11 @@ function processUnoMove(room, playerId, cardIndex, colorChoice) {
         r._skipCount = (r._skipCount || 0) + 1;
     } else if(card.type === 'reverse') {
         if(r.players.length === 2) {
-            // reverse in 2-player acts like a skip
             r._skipCount = (r._skipCount || 0) + 1;
         } else {
             r.unoDirection *= -1;
         }
-    }
-    else if(card.type === 'draw2') r.unoDrawStack += 2;
+    } else if(card.type === 'draw2') r.unoDrawStack += 2;
     else if(card.type === 'draw4') r.unoDrawStack += 4;
     
     // Win
@@ -459,6 +481,9 @@ function processUnoMove(room, playerId, cardIndex, colorChoice) {
     }
     // reset draw flag when a play happens
     p.hasDrawnThisTurn = false;
+    // increment play count and remember last played type for chaining rules
+    p.playedThisTurnCount = (p.playedThisTurnCount || 0) + 1;
+    p.lastPlayedType = card.type;
 
     // Win
     if(p.unoHand.length === 0) {
@@ -602,12 +627,22 @@ function processUnoMultiMove(room, playerId, cardIds, colorChoices) {
         if (card.color === 'black') r.unoColor = colorChoice || 'red';
         else r.unoColor = card.color;
 
-        if (card.type === 'skip') {
-            r._skipCount = (r._skipCount || 0) + 1;
-        } else if (card.type === 'reverse') {
-            if(r.players.length===2) r._skipCount = (r._skipCount || 0) + 1; else r.unoDirection *= -1;
-        } else if (card.type === 'draw2') r.unoDrawStack += 2;
-        else if (card.type === 'draw4') r.unoDrawStack += 4;
+            if (card.type === 'skip') {
+                r._skipCount = (r._skipCount || 0) + 1;
+            } else if (card.type === 'reverse') {
+                if(r.players.length === 2) {
+                    r._skipCount = (r._skipCount || 0) + 1;
+                } else {
+                    r.unoDirection *= -1;
+                }
+            } else if (card.type === 'draw2') {
+                r.unoDrawStack += 2;
+            } else if (card.type === 'draw4') {
+                r.unoDrawStack += 4;
+            }
+            // track played count for this player when they batch-play
+            p.playedThisTurnCount = (p.playedThisTurnCount || 0) + 1;
+            p.lastPlayedType = card.type;
     }
 
     // Win check
@@ -727,8 +762,8 @@ function advanceUnoTurn(room) {
     r._skipCount = 0;
     const nextPlayer = r.players[nextIdx] ? r.players[nextIdx].username : null;
     r.unoTurn = nextIdx;
-    // reset draw flag and UNO-call flag for players
-    r.players.forEach(pl => { pl.hasDrawnThisTurn = false; pl.unoCalled = false; });
+    // reset draw flag, UNO-call flag and per-turn counters for players
+    r.players.forEach(pl => { pl.hasDrawnThisTurn = false; pl.unoCalled = false; pl.playedThisTurnCount = 0; pl.lastPlayedType = null; });
     // notify clients about turn change so clients can play end-of-turn animation
     io.to(room).emit('turnChange', { prevUsername: prevPlayer, nextUsername: nextPlayer });
     updateUnoState(room); checkCpuTurn(room);

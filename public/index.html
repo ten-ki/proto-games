@@ -562,10 +562,10 @@
                     document.getElementById('sys-msg').appendChild(b);
                 }
             } else if(existingUnoBtn) existingUnoBtn.remove();
-        });
 
             // clear chain UI if it's no longer our turn
             if(!d.isMyTurn) { window.chainActive = false; window.chainRequiredType = null; }
+        });
 
         function formatUnoText(type) {
             if(type==='draw2') return '+2';
