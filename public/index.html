@@ -354,6 +354,12 @@
         let prevTurnUsername = null;
         let lastPlayedDrawType = null;
         let unoCalledLocal = false;
+        // track current pile state for client-side legality checks
+        let lastTopCard = null;
+        let lastCurrentColor = null;
+        let lastDrawStack = 0;
+        // selected card types for multi-play validation
+        let selectedCardTypes = {};
 
         // CHAT
         function sendLobby() { const t=$('lobby-in').value; if(t){socket.emit('sendChat',{type:'global',username:$('username').value,text:t});$('lobby-in').value='';} }
@@ -455,6 +461,10 @@
         }
         socket.on('unoUpdate', d => {
             myTurn = d.isMyTurn;
+            // update globals for client-side checks
+            lastTopCard = d.topCard || null;
+            lastCurrentColor = d.currentColor || null;
+            lastDrawStack = d.drawStack || 0;
             const ops = d.players.filter(p=>p.username!==myUser);
             $('uno-opponents').innerHTML = ops.map(p => `
                 <div class="opp-card ${p.isTurn?'turn':''}" data-username="${escapeHtml(p.username)}">
@@ -737,32 +747,89 @@
             cardId = String(cardId);
             // prevent selecting disabled cards
             const el = document.querySelector(`#uno-hand [data-id="${cardId}"]`);
-            if(el && el.classList.contains('disabled')) { 
-                // brief feedback
+            if(el && el.classList.contains('disabled')) {
                 el.classList.add('invalid-move'); setTimeout(()=>el.classList.remove('invalid-move'),300);
                 return;
             }
+
             const pos = selectedCards.indexOf(cardId);
             if(pos !== -1) {
+                // deselect
                 selectedCards.splice(pos, 1);
                 delete selectedColorChoices[cardId];
+                delete selectedCardTypes[cardId];
             } else {
+                // handle wilds/draw4 requiring color choice first
                 if(type === 'wild' || type === 'draw4') {
-                    // need color choice before adding
                     pendingI = cardId;
                     $('color-picker').style.display = 'flex';
-                } else {
-                    selectedCards.push(cardId);
-                    // visual pop animation for newly selected card
-                    const el = document.querySelector(`#uno-hand [data-id="${cardId}"]`);
-                    if(el) {
-                        // add temporary pop to badge (will be created in refreshHandSelection)
-                        setTimeout(()=>{
-                            const b = el.querySelector('.select-badge');
-                            if(b) { b.classList.remove('pop'); void b.offsetWidth; b.classList.add('pop'); }
-                        }, 60);
-                        el.classList.add('selected');
+                    return;
+                }
+
+                // Client-side multi-play rules:
+                // - If no previous selection: card must be playable against current pile.
+                // - If there is a previous selection: card.type must equal previous selected card.type
+                //   AND it must be legal relative to the previous selected card (same color or same type or black).
+
+                function isPlayableAgainstTop(card) {
+                    if(!lastTopCard) return false;
+                    if(lastDrawStack > 0) {
+                        if(lastTopCard.type === 'draw2' && card.type === 'draw2') return true;
+                        if(lastTopCard.type === 'draw4' && card.type === 'draw4') return true;
+                        return false;
                     }
+                    if(card.color === 'black') return true;
+                    if(card.color === lastCurrentColor) return true;
+                    if(card.type === lastTopCard.type) return true;
+                    return false;
+                }
+
+                function getColorFromEl(elm) {
+                    if(!elm) return null;
+                    const cls = elm.className || '';
+                    const m = cls.match(/u-(red|blue|green|yellow|black)/);
+                    return m ? m[1] : null;
+                }
+
+                // build a simple card object for clicked card
+                const clickedCard = { type: type, color: getColorFromEl(el) };
+
+                if(selectedCards.length === 0) {
+                    if(!isPlayableAgainstTop(clickedCard)) {
+                        el.classList.add('invalid-move'); setTimeout(()=>el.classList.remove('invalid-move'),300);
+                        showFloatingError('このカードは場に出せません');
+                        return;
+                    }
+                    selectedCards.push(cardId);
+                    selectedCardTypes[cardId] = type;
+                    // visual
+                    if(el) { setTimeout(()=>{ const b = el.querySelector('.select-badge'); if(b){ b.classList.remove('pop'); void b.offsetWidth; b.classList.add('pop'); }},60); el.classList.add('selected'); }
+                } else {
+                    // check previous selected card
+                    const prevId = selectedCards[selectedCards.length-1];
+                    const prevEl = document.querySelector(`#uno-hand [data-id="${prevId}"]`);
+                    const prevType = selectedCardTypes[prevId];
+                    const prevColor = getColorFromEl(prevEl);
+
+                    // require same type as previous
+                    if(String(type) !== String(prevType)) {
+                        el.classList.add('invalid-move'); setTimeout(()=>el.classList.remove('invalid-move'),300);
+                        showFloatingError('まとめ出しは同じ数字/記号のみ可能です');
+                        return;
+                    }
+
+                    // legality relative to previous selected card: same color or same type (already same type) or wild
+                    const legalRelative = (clickedCard.color === 'black') || (clickedCard.color === prevColor) || (clickedCard.type === prevType);
+                    if(!legalRelative) {
+                        el.classList.add('invalid-move'); setTimeout(()=>el.classList.remove('invalid-move'),300);
+                        showFloatingError('このカードは前のカードに対して合法ではありません');
+                        return;
+                    }
+
+                    // passed checks
+                    selectedCards.push(cardId);
+                    selectedCardTypes[cardId] = type;
+                    if(el) { setTimeout(()=>{ const b = el.querySelector('.select-badge'); if(b){ b.classList.remove('pop'); void b.offsetWidth; b.classList.add('pop'); }},60); el.classList.add('selected'); }
                 }
             }
             refreshHandSelection();
@@ -842,8 +909,7 @@
             // animate selected cards sequentially to pile
             await animatePlaySequence(selectedCards.slice());
 
-            // dramatic local turn-end effects (confetti + burst)
-            playLocalTurnEndEffects();
+            // no local turn-end overlay (kept subtle)
 
             // after animation, send to server
             socket.emit('unoMultiMove', { room: roomID, cardIds: selectedCards.slice(), colorChoices });
@@ -851,22 +917,7 @@
             selectedCards = []; selectedColorChoices = {}; refreshHandSelection(); refreshEndTurnButton();
         }
 
-        function playLocalTurnEndEffects() {
-            // spawn confetti and burst at pile
-            spawnConfetti(28);
-            const pile = $('uno-pile').querySelector('.uno-card');
-            if(pile) {
-                const r = pile.getBoundingClientRect();
-                burstAt(r.left + r.width/2, r.top + r.height/2, 16);
-            }
-            // show temporary banner
-            const overlay = document.createElement('div'); overlay.className='turn-overlay';
-            const banner = document.createElement('div'); banner.className='turn-banner'; banner.innerText='TURN END'; overlay.appendChild(banner);
-            document.body.appendChild(overlay);
-            requestAnimationFrame(()=>banner.classList.add('show'));
-            setTimeout(()=>{ banner.classList.remove('show'); overlay.style.opacity='0'; }, 900);
-            setTimeout(()=>overlay.remove(), 1300);
-        }
+        
 
         function spawnConfetti(count) {
             const colors = ['#FF6B6B','#4ECDC4','#FFE66D','#54A0FF','#FF9FF3','#69F0AE'];
