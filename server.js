@@ -421,8 +421,16 @@ function processUnoMove(room, playerId, cardIndex, colorChoice) {
     else r.unoColor = colorChoice || 'red'; // Wild color set
     
     // Effects
-    if(card.type === 'skip') r.unoTurn = getNextTurn(r);
-    else if(card.type === 'reverse') { if(r.players.length===2) r.unoTurn = getNextTurn(r); else r.unoDirection *= -1; }
+    if(card.type === 'skip') {
+        r._skipCount = (r._skipCount || 0) + 1;
+    } else if(card.type === 'reverse') {
+        if(r.players.length === 2) {
+            // reverse in 2-player acts like a skip
+            r._skipCount = (r._skipCount || 0) + 1;
+        } else {
+            r.unoDirection *= -1;
+        }
+    }
     else if(card.type === 'draw2') r.unoDrawStack += 2;
     else if(card.type === 'draw4') r.unoDrawStack += 4;
     
@@ -594,9 +602,11 @@ function processUnoMultiMove(room, playerId, cardIds, colorChoices) {
         if (card.color === 'black') r.unoColor = colorChoice || 'red';
         else r.unoColor = card.color;
 
-        if (card.type === 'skip') r.unoTurn = getNextTurn(r);
-        else if (card.type === 'reverse') { if(r.players.length===2) r.unoTurn = getNextTurn(r); else r.unoDirection *= -1; }
-        else if (card.type === 'draw2') r.unoDrawStack += 2;
+        if (card.type === 'skip') {
+            r._skipCount = (r._skipCount || 0) + 1;
+        } else if (card.type === 'reverse') {
+            if(r.players.length===2) r._skipCount = (r._skipCount || 0) + 1; else r.unoDirection *= -1;
+        } else if (card.type === 'draw2') r.unoDrawStack += 2;
         else if (card.type === 'draw4') r.unoDrawStack += 4;
     }
 
@@ -625,17 +635,9 @@ function processUnoMultiMove(room, playerId, cardIds, colorChoices) {
 
     // reset draw flag when a play happens
     p.hasDrawnThisTurn = false;
-    // UNO penalty check: if player now has 1 card and didn't call UNO, force draw 2
-    if(p.unoHand.length === 1 && !p.unoCalled) {
-        const drawn2 = drawCards(r, p, 2);
-        if(drawn2.length>0) io.to(room).emit('cardDrawn', { username: p.username, cards: drawn2.map(c=>({ color:c.color, type:c.type })) });
-        io.to(room).emit('unoPenalty', { username: p.username });
-    }
 
-    // Advance turn once after batch
-    r.unoTurn = getNextTurn(r);
-    updateUnoState(room);
-    checkCpuTurn(room);
+    // Advance turn once after batch (advanceUnoTurn handles UNO penalty and skip)
+    advanceUnoTurn(room);
 }
 
 // helper to emit to socket id safely
@@ -718,7 +720,11 @@ function advanceUnoTurn(room) {
         }
     } catch(e) { console.error('advanceUnoTurn penalty error', e); }
 
-    const nextIdx = getNextTurn(r);
+    // compute next index; respect skip count set by plays
+    let nextIdx = getNextTurn(r);
+    const skip = r._skipCount || 0;
+    for(let i=0;i<skip;i++) nextIdx = (nextIdx + r.unoDirection + r.players.length) % r.players.length;
+    r._skipCount = 0;
     const nextPlayer = r.players[nextIdx] ? r.players[nextIdx].username : null;
     r.unoTurn = nextIdx;
     // reset draw flag and UNO-call flag for players

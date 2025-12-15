@@ -543,7 +543,7 @@
                 // If a chain is active, only allow cards of the required type (or wilds)
                 let disabledClass = playable ? '' : 'disabled';
                 if(window.chainActive && window.chainRequiredType) {
-                    if(!(String(c.type) === String(window.chainRequiredType) || c.color === 'black')) disabledClass = 'disabled';
+                    if(String(c.type) !== String(window.chainRequiredType)) disabledClass = 'disabled';
                 }
                 const badge = isSelected ? `<div class="select-badge">${selectedCards.indexOf(String(cid))+1}</div>` : '';
                 return `<div class="hand-card-wrapper" style="position:relative;"><div data-id="${cid}" id="card-${i}" class="uno-card ${ccc} ${long} ${isSelected?'selected':''} ${disabledClass}" onclick="toggleSelect('${cid}','${c.type}',${i})"><span>${t}</span>${badge}</div></div>`;
@@ -662,8 +662,7 @@
 
         // Handle server events for actual card plays and draws
         socket.on('cardPlayed', d => {
-            // animate face card from opponent area to pile
-            if(d.username === myUser) return; // local plays already animated locally
+            // animate face card from opponent area to pile (including our own plays)
             // draw-type effects
             if(d.card.type === 'draw2' || d.card.type === 'draw4') {
                 if(lastPlayedDrawType === d.card.type) playChainEffect(d.card.type);
@@ -762,12 +761,12 @@
             // d: { requiredType }
             window.chainActive = true;
             window.chainRequiredType = d && d.requiredType ? d.requiredType : null;
-            // ensure UI indicates playability for chain: enable only matching types and wilds
+            // ensure UI indicates playability for chain: enable only matching `type` (no wilds)
             Object.keys(handById).forEach(k => {
                 const entry = handById[k];
                 const el = document.querySelector(`#uno-hand [data-id="${k}"]`);
                 if(!el) return;
-                if(entry.color === 'black' || String(entry.type) === String(window.chainRequiredType)) {
+                if(String(entry.type) === String(window.chainRequiredType)) {
                     el.classList.remove('disabled');
                 } else {
                     el.classList.add('disabled');
