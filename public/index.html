@@ -92,6 +92,11 @@
         .uno-card:active { transform: scale(0.95); } /* Touch Feedback */
 
         .uno-card.disabled { opacity: 0.45; filter: grayscale(0.35); cursor: not-allowed; transform:none; }
+
+        .fly-card {
+            position: absolute; width: 80px; height: 120px; border-radius:8px; z-index:9999; pointer-events:none;
+            transition: transform 420ms cubic-bezier(.2,.9,.2,1), opacity 320ms ease;
+        }
         
         .u-red { background: var(--uno-red); }
         .u-blue { background: var(--uno-blue); }
@@ -531,12 +536,68 @@
             }
         }
 
-        function endTurnPlay() {
+        async function endTurnPlay() {
             if(!myTurn || selectedCards.length===0) return;
             const colorChoices = selectedCards.map(id => selectedColorChoices[id] || null);
+            // Disable further interaction during animation
+            myTurn = false; refreshEndTurnButton();
+
+            // animate selected cards sequentially to pile
+            await animatePlaySequence(selectedCards.slice());
+
+            // after animation, send to server
             socket.emit('unoMultiMove', { room: roomID, cardIds: selectedCards.slice(), colorChoices });
             // clear selection
             selectedCards = []; selectedColorChoices = {}; refreshHandSelection(); refreshEndTurnButton();
+        }
+
+        function animatePlaySequence(cardIdList) {
+            return new Promise(async (resolve) => {
+                for (let cid of cardIdList) {
+                    const el = document.querySelector(`#uno-hand [data-id="${cid}"]`);
+                    if (!el) { await new Promise(r => setTimeout(r, 60)); continue; }
+                    await animateCardToPile(el);
+                    // small delay between cards
+                    await new Promise(r => setTimeout(r, 80));
+                }
+                resolve();
+            });
+        }
+
+        function animateCardToPile(cardEl) {
+            return new Promise((resolve) => {
+                const rect = cardEl.getBoundingClientRect();
+                const pileCard = $('uno-pile').querySelector('.uno-card');
+                const pileRect = pileCard ? pileCard.getBoundingClientRect() : { left: window.innerWidth/2, top: window.innerHeight/2, width: 80, height: 120 };
+
+                const clone = cardEl.cloneNode(true);
+                clone.classList.add('fly-card');
+                // match visuals
+                clone.style.width = rect.width + 'px';
+                clone.style.height = rect.height + 'px';
+                clone.style.left = rect.left + 'px';
+                clone.style.top = rect.top + 'px';
+                clone.style.position = 'absolute';
+                clone.style.margin = '0';
+                clone.style.transform = 'translate(0,0)';
+                document.body.appendChild(clone);
+
+                // compute translation
+                const dx = (pileRect.left + (pileRect.width/2)) - (rect.left + (rect.width/2));
+                const dy = (pileRect.top + (pileRect.height/2)) - (rect.top + (rect.height/2));
+
+                requestAnimationFrame(() => {
+                    clone.style.transform = `translate(${dx}px, ${dy}px) scale(0.9)`;
+                    clone.style.opacity = '0.9';
+                });
+
+                // when transition ends, remove clone
+                const cleanup = () => { clone.removeEventListener('transitionend', cleanup); clone.remove(); resolve(); };
+                clone.addEventListener('transitionend', cleanup);
+
+                // fallback in case transitionend doesn't fire
+                setTimeout(() => { if(document.body.contains(clone)) { clone.remove(); resolve(); } }, 700);
+            });
         }
 
         // BJ (Minified)
