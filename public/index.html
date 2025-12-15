@@ -65,6 +65,12 @@
         @keyframes turnblink { 0%{ transform: translateY(0) scale(1); box-shadow: 0 0 6px rgba(0,230,118,0.12);} 40%{ transform: translateY(-6px) scale(1.06); box-shadow: 0 0 30px rgba(0,230,118,0.24);} 100%{ transform: translateY(0) scale(1); } }
         .color-ring.turn-flash { animation: ringflash 900ms ease; }
         @keyframes ringflash { 0%{ box-shadow: 0 0 10px rgba(255,255,255,0.02);} 50%{ box-shadow: 0 0 40px rgba(255,255,255,0.12);} 100%{ box-shadow: 0 0 10px rgba(255,255,255,0.02);} }
+        .skip-flash { animation: skipPop 900ms ease; }
+        @keyframes skipPop { 0%{ transform: translateY(0) rotate(0); } 40%{ transform: translateY(-8px) rotate(-4deg); } 100%{ transform: translateY(0) rotate(0); } }
+        .reverse-flip { animation: revSpin 900ms ease; }
+        @keyframes revSpin { 0%{ transform: rotateY(0); } 50%{ transform: rotateY(180deg) scale(1.03); } 100%{ transform: rotateY(0); } }
+        .color-ring.reverse-flash { animation: ringrev 900ms ease; }
+        @keyframes ringrev { 0%{ box-shadow: 0 0 6px rgba(100,100,255,0.08);} 50%{ box-shadow: 0 0 48px rgba(100,100,255,0.32); } 100%{ box-shadow: 0 0 6px rgba(100,100,255,0.08);} }
 
         /* Center Pile (Draw & Play) */
         .center-area {
@@ -123,12 +129,12 @@
             z-index: 100; /* ★重要: 最前面に配置 */
         }
         .hand-card-wrapper {
-            margin-left: -35px; transition: 0.2s;
-            flex-shrink: 0; width: 80px; height: 120px;
+            margin-left: clamp(-28px, -8vw, -45px); transition: 0.18s;
+            flex-shrink: 0; width: clamp(56px, 12vw, 96px); height: clamp(86px, 19vw, 144px);
         }
         .hand-card-wrapper:first-child { margin-left: 0; }
         .hand-card-wrapper:hover, .hand-card-wrapper:active {
-            transform: translateY(-20px); margin-right: 35px; z-index: 101;
+            transform: translateY(-18px); margin-right: 35px; z-index: 101;
         }
         .select-badge {
             position: absolute; top: 6px; right: 6px; background: rgba(0,0,0,0.6);
@@ -551,6 +557,26 @@
             setTimeout(()=>{ overlay.style.transition='opacity 360ms ease'; overlay.style.opacity='0'; }, 900);
             setTimeout(()=>overlay.remove(), 1400);
         }
+
+        function playSkipEffect(username) {
+            // small flash and banner
+            const el = document.querySelector(`#uno-opponents [data-username="${CSS.escape(username)}"]`);
+            if(el) { el.classList.add('skip-flash'); setTimeout(()=>el.classList.remove('skip-flash'),900); }
+            const b = document.createElement('div'); b.style.position='fixed'; b.style.left='50%'; b.style.top='18%'; b.style.transform='translateX(-50%)'; b.style.zIndex=3000; b.style.padding='12px 18px'; b.style.borderRadius='12px'; b.style.background='linear-gradient(90deg,#ff8a65,#ff5252)'; b.style.color='#fff'; b.style.fontWeight='900'; b.innerText = `SKIP!`;
+            document.body.appendChild(b);
+            setTimeout(()=>{ b.style.transition='opacity 400ms ease'; b.style.opacity='0'; }, 700);
+            setTimeout(()=>b.remove(), 1100);
+        }
+
+        function playReverseEffect(username) {
+            const el = document.querySelector(`#uno-opponents [data-username="${CSS.escape(username)}"]`);
+            if(el) { el.classList.add('reverse-flip'); setTimeout(()=>el.classList.remove('reverse-flip'),1000); }
+            const ring = $('color-ring'); ring.classList.add('reverse-flash'); setTimeout(()=>ring.classList.remove('reverse-flash'),1000);
+            const b = document.createElement('div'); b.style.position='fixed'; b.style.left='50%'; b.style.top='15%'; b.style.transform='translateX(-50%)'; b.style.zIndex=3000; b.style.padding='14px 22px'; b.style.borderRadius='14px'; b.style.background='linear-gradient(90deg,#448aff,#7c4dff)'; b.style.color='#fff'; b.style.fontWeight='900'; b.innerText = `REVERSE!`;
+            document.body.appendChild(b);
+            setTimeout(()=>{ b.style.transition='opacity 400ms ease'; b.style.opacity='0'; }, 900);
+            setTimeout(()=>b.remove(), 1300);
+        }
         function animateCountChange(username, newCount, increase=false) {
             const el = document.querySelector(`#uno-opponents [data-username="${CSS.escape(username)}"] .opp-count`);
             if(!el) return;
@@ -582,6 +608,9 @@
             } else {
                 lastPlayedDrawType = null;
             }
+            // skip/reverse special effects
+            if(d.card.type === 'skip') playSkipEffect(d.username);
+            if(d.card.type === 'reverse') playReverseEffect(d.username);
             animatePlayedFaceCard(d.username, d.card);
         });
 

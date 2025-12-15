@@ -500,23 +500,30 @@ function processUnoMultiMove(room, playerId, cardIds, colorChoices) {
         candidates.push({ idx, card: p.unoHand[idx] });
     }
 
-    // Validate sequentially
-    for (let j = 0; j < candidates.length; j++) {
-        const { card } = candidates[j];
-        if (!isPlayableSim(card)) { socketEmitToPlayer(playerId, 'error', 'そのカードは現在出せません'); return; }
-
-        // simulate play
-        tempPile.push(card);
-        if (card.color === 'black') tempColor = (Array.isArray(colorChoices) ? colorChoices[j] : undefined) || tempColor || 'red';
-        else tempColor = card.color;
-
-        if (card.type === 'skip') {
-            // skip affects turn index; no need to simulate turn index here for validation
-        } else if (card.type === 'reverse') {
-            // reverse toggles direction
-        } else if (card.type === 'draw2') tempDrawStack += 2;
-        else if (card.type === 'draw4') tempDrawStack += 4;
+    // Require that the first card in the submitted sequence is playable against the current top.
+    const origTop = r.unoPile[r.unoPile.length - 1];
+    function isPlayableAgainstOriginal(card) {
+        if (r.unoDrawStack > 0) {
+            if (origTop.type === 'draw2' && card.type === 'draw2') return true;
+            if (origTop.type === 'draw4' && card.type === 'draw4') return true;
+            return false;
+        }
+        if (card.color === 'black') return true;
+        if (card.color === r.unoColor) return true;
+        if (card.type === origTop.type) return true;
+        return false;
     }
+
+    if (candidates.length === 0) return; // nothing to do
+    const firstCard = candidates[0].card;
+    if (!isPlayableAgainstOriginal(firstCard)) { socketEmitToPlayer(playerId, 'error', '最初のカードが現在の場に対して合法ではありません'); return; }
+
+    // Enforce that bulk-play cards all share the same `type` as the first card
+    // (allows multiple same-number across colors, or repeated action cards like multiple skips/reverses)
+    const allSameType = candidates.every(c => String(c.card.type) === String(firstCard.type));
+    if (!allSameType) { socketEmitToPlayer(playerId, 'error', 'まとめ出しは同じ数字または同じ記号のみ可能です'); return; }
+
+    // We've validated the first card and type-uniformity; allow the rest to be played in the submitted order.
 
     // prevent symbol finish: if after playing all candidates player's hand would be empty and last card is not numeric, reject
     const wouldRemain = p.unoHand.length - candidates.length;
