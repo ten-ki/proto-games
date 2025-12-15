@@ -184,7 +184,7 @@ io.on('connection', (socket) => {
                 const colors = ['#FF6B6B', '#4ECDC4', '#FFE66D', '#FFFFFF', '#FF9FF3', '#54A0FF'];
                 const player = {
                     id: sid, username: entry.username, uid: entry.uid || null, color: colors[idx % colors.length],
-                    isCpu: false, ready: true, score: fee, initialScore: fee, currentBet: 0,
+                    isCpu: false, ready: false, score: fee, initialScore: fee, currentBet: 0,
                     hand: [], status: 'playing', result: '', unoHand: []
                 };
 
@@ -198,10 +198,7 @@ io.on('connection', (socket) => {
             io.to(roomId).emit('roomUpdate', { players: rooms[roomId].players, gameType: rooms[roomId].gameType, maxRounds: rooms[roomId].maxRounds });
             io.emit('rankingUpdate', getRankingData());
 
-            // auto-start if enough players
-            const r = rooms[roomId];
-            if(r.gameType === 'uno' && r.players.length >= 2) startUnoMatch(roomId);
-            if(r.gameType === 'blackjack' && r.players.length >= 2) startBjMatch(roomId);
+            // Do NOT auto-start random matches; require all players to toggle ready (same behavior as manual rooms).
         }
     });
 
@@ -401,13 +398,56 @@ function processUnoMove(room, playerId, cardIndex, colorChoice) {
 function processUnoMultiMove(room, playerId, cardIds, colorChoices) {
     const r = rooms[room]; if(!r || !r.gameActive) return;
     const p = r.players[r.unoTurn]; if(p.id !== playerId) return;
+    // Validate sequence first (simulate pile and state), do NOT mutate until validated
+    const tempPile = r.unoPile.slice();
+    let tempColor = r.unoColor;
+    let tempDrawStack = r.unoDrawStack;
 
-    // Play each card in the specified order; find by id in current hand
-    for (let idx = 0; idx < cardIds.length; idx++) {
-        const cid = cardIds[idx];
-        const colorChoice = Array.isArray(colorChoices) ? colorChoices[idx] : undefined;
+    function isPlayableSim(card) {
+        const top = tempPile[tempPile.length - 1];
+        if (tempDrawStack > 0) {
+            if (top.type === 'draw2' && card.type === 'draw2') return true;
+            if (top.type === 'draw4' && card.type === 'draw4') return true;
+            return false;
+        }
+        if (card.color === 'black') return true;
+        if (card.color === tempColor) return true;
+        if (card.type === top.type) return true;
+        return false;
+    }
+
+    // Build list of candidate cards from player's current hand (by id)
+    const candidates = [];
+    for (let cid of cardIds) {
+        const idx = p.unoHand.findIndex(c => String(c.id) === String(cid));
+        if (idx === -1) { socketEmitToPlayer(playerId, 'error', '選択したカードが見つかりません'); return; }
+        candidates.push({ idx, card: p.unoHand[idx] });
+    }
+
+    // Validate sequentially
+    for (let j = 0; j < candidates.length; j++) {
+        const { card } = candidates[j];
+        if (!isPlayableSim(card)) { socketEmitToPlayer(playerId, 'error', 'そのカードは現在出せません'); return; }
+
+        // simulate play
+        tempPile.push(card);
+        if (card.color === 'black') tempColor = (Array.isArray(colorChoices) ? colorChoices[j] : undefined) || tempColor || 'red';
+        else tempColor = card.color;
+
+        if (card.type === 'skip') {
+            // skip affects turn index; no need to simulate turn index here for validation
+        } else if (card.type === 'reverse') {
+            // reverse toggles direction
+        } else if (card.type === 'draw2') tempDrawStack += 2;
+        else if (card.type === 'draw4') tempDrawStack += 4;
+    }
+
+    // All validated; now actually apply the plays in order
+    for (let k = 0; k < candidates.length; k++) {
+        const cid = cardIds[k];
+        const colorChoice = Array.isArray(colorChoices) ? colorChoices[k] : undefined;
         const i = p.unoHand.findIndex(c => String(c.id) === String(cid));
-        if (i === -1) continue; // missing or already played
+        if (i === -1) continue; // already played earlier in this loop somehow
 
         const card = p.unoHand.splice(i, 1)[0];
         r.unoPile.push(card);
@@ -415,7 +455,6 @@ function processUnoMultiMove(room, playerId, cardIds, colorChoices) {
         if (card.color === 'black') r.unoColor = colorChoice || 'red';
         else r.unoColor = card.color;
 
-        // Apply effects sequentially (draw stack, reverse, skip)
         if (card.type === 'skip') r.unoTurn = getNextTurn(r);
         else if (card.type === 'reverse') { if(r.players.length===2) r.unoTurn = getNextTurn(r); else r.unoDirection *= -1; }
         else if (card.type === 'draw2') r.unoDrawStack += 2;
@@ -440,6 +479,12 @@ function processUnoMultiMove(room, playerId, cardIds, colorChoices) {
     r.unoTurn = getNextTurn(r);
     updateUnoState(room);
     checkCpuTurn(room);
+}
+
+// helper to emit to socket id safely
+function socketEmitToPlayer(socketId, ev, msg) {
+    const sock = io.sockets.sockets.get(socketId);
+    if(sock) sock.emit(ev, msg);
 }
 
 function processUnoDraw(room, playerId) {

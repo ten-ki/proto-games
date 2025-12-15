@@ -90,6 +90,8 @@
         .uno-card.long-text span { font-size: 1.5rem; } /* Reduce font for wild/draw4 */
         
         .uno-card:active { transform: scale(0.95); } /* Touch Feedback */
+
+        .uno-card.disabled { opacity: 0.45; filter: grayscale(0.35); cursor: not-allowed; transform:none; }
         
         .u-red { background: var(--uno-red); }
         .u-blue { background: var(--uno-blue); }
@@ -402,8 +404,26 @@
                 const ccc = c.color==='black'?'u-black':`u-${c.color}`;
                 const t = formatUnoText(c.type);
                 const long = t.length > 1 ? 'long-text' : '';
+
+                // determine playability for client-side disabling
+                const top = d.topCard || {};
+                const drawStack = d.drawStack || 0;
+                function isPlayable(card) {
+                    if(drawStack > 0) {
+                        if(top.type === 'draw2' && card.type === 'draw2') return true;
+                        if(top.type === 'draw4' && card.type === 'draw4') return true;
+                        return false;
+                    }
+                    if(card.color === 'black') return true;
+                    if(card.color === d.currentColor) return true;
+                    if(card.type === top.type) return true;
+                    return false;
+                }
+
+                const playable = isPlayable(c);
+                const disabledClass = playable ? '' : 'disabled';
                 const badge = isSelected ? `<div class="select-badge">${selectedCards.indexOf(String(cid))+1}</div>` : '';
-                return `<div class="hand-card-wrapper" style="position:relative;"><div data-id="${cid}" id="card-${i}" class="uno-card ${ccc} ${long} ${isSelected?'selected':''}" onclick="toggleSelect('${cid}','${c.type}',${i})"><span>${t}</span>${badge}</div></div>`;
+                return `<div class="hand-card-wrapper" style="position:relative;"><div data-id="${cid}" id="card-${i}" class="uno-card ${ccc} ${long} ${isSelected?'selected':''} ${disabledClass}" onclick="toggleSelect('${cid}','${c.type}',${i})"><span>${t}</span>${badge}</div></div>`;
             }).join('');
             
             if(d.isMyTurn) $('sys-msg').innerText = "YOUR TURN";
@@ -422,6 +442,13 @@
         function toggleSelect(cardId, type, index) {
             if(!myTurn) return;
             cardId = String(cardId);
+            // prevent selecting disabled cards
+            const el = document.querySelector(`#uno-hand [data-id="${cardId}"]`);
+            if(el && el.classList.contains('disabled')) { 
+                // brief feedback
+                el.classList.add('invalid-move'); setTimeout(()=>el.classList.remove('invalid-move'),300);
+                return;
+            }
             const pos = selectedCards.indexOf(cardId);
             if(pos !== -1) {
                 selectedCards.splice(pos, 1);
