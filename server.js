@@ -523,7 +523,22 @@ function processUnoMultiMove(room, playerId, cardIds, colorChoices) {
     const allSameType = candidates.every(c => String(c.card.type) === String(firstCard.type));
     if (!allSameType) { socketEmitToPlayer(playerId, 'error', 'まとめ出しは同じ数字または同じ記号のみ可能です'); return; }
 
-    // We've validated the first card and type-uniformity; allow the rest to be played in the submitted order.
+    // Further validate the sequence: each subsequent card must be playable against
+    // the previous card in the submitted order (simulate applying them to the pile).
+    for (let k = 0; k < candidates.length; k++) {
+        const card = candidates[k].card;
+        const colorChoice = Array.isArray(colorChoices) ? colorChoices[k] : undefined;
+        if (!isPlayableSim(card)) { socketEmitToPlayer(playerId, 'error', `シーケンス内のカードが${k+1}枚目で合法ではありません`); return; }
+        // simulate applying the card
+        tempPile.push(card);
+        if (card.color === 'black') tempColor = colorChoice || tempColor || 'red';
+        else tempColor = card.color;
+        if (card.type === 'draw2') tempDrawStack += 2;
+        else if (card.type === 'draw4') tempDrawStack += 4;
+        // note: skip/reverse affect turn but do not affect playability simulation
+    }
+
+    // We've validated the first card, type-uniformity and full sequence; allow actual play.
 
     // prevent symbol finish: if after playing all candidates player's hand would be empty and last card is not numeric, reject
     const wouldRemain = p.unoHand.length - candidates.length;

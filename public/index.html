@@ -360,6 +360,8 @@
         let lastDrawStack = 0;
         // selected card types for multi-play validation
         let selectedCardTypes = {};
+        // map of hand cards by id for easy lookup
+        let handById = {};
 
         // CHAT
         function sendLobby() { const t=$('lobby-in').value; if(t){socket.emit('sendChat',{type:'global',username:$('username').value,text:t});$('lobby-in').value='';} }
@@ -509,8 +511,11 @@
             prevUnoPlayersMap = {};
             d.players.forEach(p => prevUnoPlayersMap[p.username] = p.handCount);
 
+            // build hand map for lookup
+            handById = {};
             $('uno-hand').innerHTML = d.myHand.map((c, i) => {
                 const cid = c.id || `${i}`;
+                handById[String(cid)] = c;
                 const isSelected = selectedCards.includes(String(cid));
                 const ccc = c.color==='black'?'u-black':`u-${c.color}`;
                 const t = formatUnoText(c.type);
@@ -784,15 +789,8 @@
                     return false;
                 }
 
-                function getColorFromEl(elm) {
-                    if(!elm) return null;
-                    const cls = elm.className || '';
-                    const m = cls.match(/u-(red|blue|green|yellow|black)/);
-                    return m ? m[1] : null;
-                }
-
-                // build a simple card object for clicked card
-                const clickedCard = { type: type, color: getColorFromEl(el) };
+                // build a simple card object for clicked card from hand map
+                const clickedCard = handById[cardId] || { type: type, color: null };
 
                 if(selectedCards.length === 0) {
                     if(!isPlayableAgainstTop(clickedCard)) {
@@ -801,26 +799,39 @@
                         return;
                     }
                     selectedCards.push(cardId);
-                    selectedCardTypes[cardId] = type;
+                    selectedCardTypes[cardId] = clickedCard.type;
                     // visual
                     if(el) { setTimeout(()=>{ const b = el.querySelector('.select-badge'); if(b){ b.classList.remove('pop'); void b.offsetWidth; b.classList.add('pop'); }},60); el.classList.add('selected'); }
                 } else {
                     // check previous selected card
                     const prevId = selectedCards[selectedCards.length-1];
-                    const prevEl = document.querySelector(`#uno-hand [data-id="${prevId}"]`);
-                    const prevType = selectedCardTypes[prevId];
-                    const prevColor = getColorFromEl(prevEl);
+                    const prevCard = handById[prevId];
+                    if(!prevCard) {
+                        showFloatingError('内部エラー: 前のカードが見つかりません'); return;
+                    }
 
                     // require same type as previous
-                    if(String(type) !== String(prevType)) {
+                    if(String(clickedCard.type) !== String(prevCard.type)) {
                         el.classList.add('invalid-move'); setTimeout(()=>el.classList.remove('invalid-move'),300);
                         showFloatingError('まとめ出しは同じ数字/記号のみ可能です');
                         return;
                     }
 
-                    // legality relative to previous selected card: same color or same type (already same type) or wild
-                    const legalRelative = (clickedCard.color === 'black') || (clickedCard.color === prevColor) || (clickedCard.type === prevType);
-                    if(!legalRelative) {
+                    // legality relative to previous selected card: use same rules as pile-check but with prevCard as top
+                    function isPlayableAgainstCard(topCard, card) {
+                        if(!topCard) return false;
+                        if(lastDrawStack > 0) {
+                            if(topCard.type === 'draw2' && card.type === 'draw2') return true;
+                            if(topCard.type === 'draw4' && card.type === 'draw4') return true;
+                            return false;
+                        }
+                        if(card.color === 'black') return true;
+                        if(card.color === topCard.color) return true;
+                        if(card.type === topCard.type) return true;
+                        return false;
+                    }
+
+                    if(!isPlayableAgainstCard(prevCard, clickedCard)) {
                         el.classList.add('invalid-move'); setTimeout(()=>el.classList.remove('invalid-move'),300);
                         showFloatingError('このカードは前のカードに対して合法ではありません');
                         return;
@@ -828,7 +839,7 @@
 
                     // passed checks
                     selectedCards.push(cardId);
-                    selectedCardTypes[cardId] = type;
+                    selectedCardTypes[cardId] = clickedCard.type;
                     if(el) { setTimeout(()=>{ const b = el.querySelector('.select-badge'); if(b){ b.classList.remove('pop'); void b.offsetWidth; b.classList.add('pop'); }},60); el.classList.add('selected'); }
                 }
             }
