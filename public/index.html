@@ -740,12 +740,7 @@
             setTimeout(()=>b.remove(), 1700);
         });
 
-        socket.on('unoPenalty', d => {
-            const b = document.createElement('div'); b.style.position='fixed'; b.style.left='50%'; b.style.top='14%'; b.style.transform='translateX(-50%)'; b.style.zIndex=3000; b.style.padding='12px 18px'; b.style.borderRadius='10px'; b.style.background='rgba(255,0,0,0.9)'; b.style.color='#fff'; b.style.fontWeight='800'; b.innerText = `${d.username} failed to call UNO — drew 2 cards!`;
-            document.body.appendChild(b);
-            setTimeout(()=>{ b.style.transition='opacity 400ms ease'; b.style.opacity='0'; }, 1800);
-            setTimeout(()=>b.remove(), 2300);
-        });
+        // UNO penalties are removed (server auto-calls UNO); no client handling needed
 
         // Server-driven turn change: play turn-end animation and a banner
         socket.on('turnChange', d => {
@@ -864,12 +859,22 @@
         }
 
         function refreshEndTurnButton() {
-            const btn = document.getElementById('play-btn');
+            const playBtn = document.getElementById('play-btn');
+            const endBtn = document.getElementById('endturn-btn');
+            // Play button only when a selection exists
             if(myTurn && selectedCards.length>0) {
-                if(!btn) {
+                if(!playBtn) {
                     const b = document.createElement('button'); b.id='play-btn'; b.innerText='PLAY'; b.onclick = playSelectedCard; document.getElementById('sys-msg').appendChild(b);
                 }
-            } else if(btn) btn.remove();
+            } else if(playBtn) playBtn.remove();
+
+            // End Turn button always available while it's your turn (humans must press it)
+            if(myTurn) {
+                if(!endBtn) {
+                    const e = document.createElement('button'); e.id='endturn-btn'; e.innerText='END TURN'; e.onclick = () => { socket.emit('unoEndTurn', { room: roomID }); myTurn = false; refreshEndTurnButton(); };
+                    document.getElementById('sys-msg').appendChild(e);
+                }
+            } else if(endBtn) endBtn.remove();
         }
         
         // Invalid Move Feedback (Optional if server rejects silently, users might be confused)

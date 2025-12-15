@@ -342,6 +342,14 @@ io.on('connection', (socket) => {
     socket.on('unoMove', (d) => processUnoMove(d.room, socket.id, d.cardIndex, d.colorChoice));
     socket.on('unoMultiMove', (d) => processUnoMultiMove(d.room, socket.id, d.cardIds || [], d.colorChoices || []));
     socket.on('unoDraw', ({ room }) => processUnoDraw(room, socket.id));
+    // Explicit end-turn from a human player
+    socket.on('unoEndTurn', ({ room }) => {
+        const r = rooms[room]; if(!r || !r.gameActive) return;
+        const p = r.players[r.unoTurn]; if(!p || p.id !== socket.id) return;
+        // Only human players should call this; CPUs are controlled server-side
+        if(p.isCpu) return;
+        advanceUnoTurn(room);
+    });
 });
 
 function getRankingData() {
@@ -490,7 +498,12 @@ function processUnoMove(room, playerId, cardIndex, colorChoice) {
     p.playedThisTurnCount = (p.playedThisTurnCount || 0) + 1;
     p.lastPlayedType = card.type;
 
-    // Win
+    // Auto UNO call: when a player's hand becomes 1, mark UNO as called (penalties abolished)
+    if(p.unoHand.length === 1) {
+        try { p.unoCalled = true; io.to(room).emit('unoCalled', { username: p.username }); } catch(e){}
+    }
+
+    // Win (re-check)
     if(p.unoHand.length === 0) {
         // mark player finished but continue match
         p.finished = true;
@@ -513,30 +526,26 @@ function processUnoMove(room, playerId, cardIndex, colorChoice) {
         // otherwise continue match without removing room
     }
 
-    // If the player still has cards of the same `type` as the just-played card,
-    // allow them to continue (do not advance the turn). Emit a targeted event
-    // to inform the client that chaining is allowed and which `type` is required.
+    // If the player still has cards of the same `type`, notify them they may continue chaining.
     try {
         const lastType = card.type;
         const hasSameType = p.unoHand.some(c => String(c.type) === String(lastType));
         if(hasSameType) {
-            // Inform only this player that they may continue chaining
             socketEmitToPlayer(p.id, 'chainAllowed', { requiredType: lastType });
             updateUnoState(room);
-            // If the current player is a CPU, schedule next CPU action immediately
-            checkCpuTurn(room);
-            return; // keep turn with this player
+            // CPU should continue acting automatically
+            if(p.isCpu) { checkCpuTurn(room); }
+            return; // keep turn with this player (humans must press end-turn explicitly)
         }
     } catch(e) { console.error('chain check error', e); }
 
-    // UNO penalty: if player has 1 card and did NOT press UNO call before ending, force draw 2
-    if(p.unoHand.length === 1 && !p.unoCalled) {
-        const drawn = drawCards(r, p, 2);
-        if(drawn.length>0) io.to(room).emit('cardDrawn', { username: p.username, cards: drawn.map(c=>({ color:c.color, type:c.type })) });
-        io.to(room).emit('unoPenalty', { username: p.username });
+    // No chain possible. For CPU, advance immediately. For human players, do not
+    // auto-advance — they must press the End Turn button to finish their turn.
+    if(p.isCpu) {
+        advanceUnoTurn(room);
+    } else {
+        updateUnoState(room);
     }
-
-    advanceUnoTurn(room);
 }
 
 // Process multiple cards played at once (cardIds array, colorChoices parallel array)
@@ -676,8 +685,17 @@ function processUnoMultiMove(room, playerId, cardIds, colorChoices) {
     // reset draw flag when a play happens
     p.hasDrawnThisTurn = false;
 
-    // Advance turn once after batch (advanceUnoTurn handles UNO penalty and skip)
-    advanceUnoTurn(room);
+    // Auto UNO call: when a player's hand becomes 1, mark UNO as called (penalties abolished)
+    if(p.unoHand.length === 1) {
+        try { p.unoCalled = true; io.to(room).emit('unoCalled', { username: p.username }); } catch(e){}
+    }
+
+    // After batch plays: CPU advances immediately; human players must press End Turn
+    if(p.isCpu) {
+        advanceUnoTurn(room);
+    } else {
+        updateUnoState(room);
+    }
 }
 
 // helper to emit to socket id safely
@@ -694,7 +712,9 @@ function processUnoDraw(room, playerId) {
         r.unoDrawStack = 0;
         // drawing from stack counts as action and ends turn
         p.hasDrawnThisTurn = true;
-        advanceUnoTurn(room);
+        // For humans, require explicit end-turn; CPU advances immediately
+        if(p.isCpu) advanceUnoTurn(room);
+        else updateUnoState(room);
         return;
     }
 
@@ -712,7 +732,7 @@ function processUnoDraw(room, playerId) {
         // nothing drawn (deck empty) -> just update and advance
         p.hasDrawnThisTurn = true;
         updateUnoState(room);
-        advanceUnoTurn(room);
+        if(p.isCpu) advanceUnoTurn(room);
         return;
     }
 
@@ -722,13 +742,15 @@ function processUnoDraw(room, playerId) {
     if (drawnCard && canPlayUnoCard(r, drawnCard)) {
         // player may play the drawn card; mark as drawn and update state
         p.hasDrawnThisTurn = true;
+        // auto UNO if down to 1
+        if(p.unoHand.length === 1) { try { p.unoCalled = true; io.to(room).emit('unoCalled', { username: p.username }); } catch(e){} }
         updateUnoState(room);
         if(p.isCpu) setTimeout(() => cpuTryPlayAfterDraw(room, p), 1800);
     } else {
-        // cannot play, end turn
+        // cannot play: for CPU advance, for human require explicit end-turn
         p.hasDrawnThisTurn = true;
         updateUnoState(room);
-        advanceUnoTurn(room);
+        if(p.isCpu) advanceUnoTurn(room);
     }
 }
 
@@ -754,14 +776,10 @@ function advanceUnoTurn(room) {
     // clear any cpu fallback timers for previous player
     try { if(r._cpuFallbacks && prevObj && r._cpuFallbacks[prevObj.id]) { clearTimeout(r._cpuFallbacks[prevObj.id]); r._cpuFallbacks[prevObj.id] = null; } } catch(e) {}
 
-    // Apply UNO penalty for prev player if they had 1 card and didn't call UNO
+    // Clear any UNO-call state for previous player (penalties abolished)
     try {
-        if(prevObj && prevObj.unoHand && prevObj.unoHand.length === 1 && !prevObj.unoCalled) {
-            const drawn = drawCards(r, prevObj, 2);
-            if(drawn.length>0) io.to(room).emit('cardDrawn', { username: prevObj.username, cards: drawn.map(c=>({ color:c.color, type:c.type })) });
-            io.to(room).emit('unoPenalty', { username: prevObj.username });
-        }
-    } catch(e) { console.error('advanceUnoTurn penalty error', e); }
+        if(prevObj && prevObj.unoHand) prevObj.unoCalled = false;
+    } catch(e) { console.error('advanceUnoTurn clear unoCalled error', e); }
 
     // compute next index; respect skip count set by plays
     let nextIdx = getNextTurn(r);
@@ -806,7 +824,13 @@ function runCpuLogic(room, p) {
         // lightweight decision: collect playable indices
         const playableIndices = [];
         for(let i=0;i<p.unoHand.length;i++) {
-            const c = p.unoHand[i]; if(canPlayUnoCard(r, c)) playableIndices.push(i);
+            const c = p.unoHand[i];
+            // If CPU is chaining (already played at least one this turn), enforce same-type requirement
+            if(p.playedThisTurnCount > 0) {
+                if(String(c.type) === String(p.lastPlayedType) && canPlayUnoCard(r, c)) playableIndices.push(i);
+            } else {
+                if(canPlayUnoCard(r, c)) playableIndices.push(i);
+            }
         }
 
         if(playableIndices.length === 0) {
@@ -828,7 +852,7 @@ function runCpuLogic(room, p) {
         const chosenCard = p.unoHand[choiceIdx];
         const colorChoice = (chosenCard && chosenCard.color === 'black') ? fav : null;
 
-        // if playing would leave CPU with 1 card, mark unoCalled to avoid penalty
+        // if playing would leave CPU with 1 card, mark unoCalled (penalties abolished but keep state)
         try { if((p.unoHand.length - 1) === 1) p.unoCalled = true; } catch(e){}
 
         setTimeout(() => processUnoMove(room, p.id, choiceIdx, colorChoice), 300 + Math.floor(Math.random()*200));
@@ -844,7 +868,12 @@ function cpuFallbackAction(room, p) {
     try {
         const playable = [];
         for(let i=0;i<p.unoHand.length;i++) {
-            const c = p.unoHand[i]; if(canPlayUnoCard(r,c)) playable.push(i);
+            const c = p.unoHand[i];
+            if(p.playedThisTurnCount > 0) {
+                if(String(c.type) === String(p.lastPlayedType) && canPlayUnoCard(r, c)) playable.push(i);
+            } else {
+                if(canPlayUnoCard(r,c)) playable.push(i);
+            }
         }
         if(playable.length === 0) {
             processUnoDraw(room, p.id);
@@ -873,7 +902,7 @@ function cpuTryPlayAfterDraw(room, p) {
         // clear any fallback timer for this CPU
         if(r && r._cpuFallbacks && r._cpuFallbacks[p.id]) { clearTimeout(r._cpuFallbacks[p.id]); r._cpuFallbacks[p.id] = null; }
         const card = p.unoHand[p.unoHand.length-1];
-        if(canPlayUnoCard(r, card)) {
+        if(canPlayUnoCard(r, card) && (p.playedThisTurnCount === 0 || String(card.type) === String(p.lastPlayedType))) {
             // if playing this card will result in 1 card, auto-call UNO
             try { if((p.unoHand.length - 1) === 1) p.unoCalled = true; } catch(e){}
             processUnoMove(room, p.id, p.unoHand.length-1, 'red');
