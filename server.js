@@ -657,10 +657,18 @@ function drawCards(r, p, count) {
     return drawn;
 }
 
-function advanceUnoTurn(room) { const r = rooms[room]; r.unoTurn = getNextTurn(r);
+function advanceUnoTurn(room) {
+    const r = rooms[room];
+    const prevPlayer = r.players[r.unoTurn] ? r.players[r.unoTurn].username : null;
+    const nextIdx = getNextTurn(r);
+    const nextPlayer = r.players[nextIdx] ? r.players[nextIdx].username : null;
+    r.unoTurn = nextIdx;
     // reset draw flag and UNO-call flag for players
     r.players.forEach(pl => { pl.hasDrawnThisTurn = false; pl.unoCalled = false; });
-    updateUnoState(room); checkCpuTurn(room); }
+    // notify clients about turn change so clients can play end-of-turn animation
+    io.to(room).emit('turnChange', { prevUsername: prevPlayer, nextUsername: nextPlayer });
+    updateUnoState(room); checkCpuTurn(room);
+}
 function getNextTurn(r) { return (r.unoTurn + r.unoDirection + r.players.length) % r.players.length; }
 function checkCpuTurn(room) { const r = rooms[room]; if(!r.gameActive) return; const p = r.players[r.unoTurn]; if(p.isCpu) setTimeout(() => runCpuLogic(room, p), 1500); }
 

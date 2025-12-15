@@ -230,6 +230,25 @@
 
         /* Ensure container fits and doesn't overflow horizontally */
         #main-app { max-width: 1600px; margin: 0 auto; }
+
+        /* Turn-end overlay & confetti */
+        .turn-overlay { position: fixed; left: 0; top: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center; z-index: 4000; pointer-events: none; }
+        .turn-banner { background: linear-gradient(90deg,#fff176,#ff8a65); color: #111; padding: 18px 28px; border-radius: 18px; font-weight: 900; font-size: 1.8rem; box-shadow: 0 24px 60px rgba(0,0,0,0.6); transform: translateY(-10px); opacity:0; transition: transform 360ms cubic-bezier(.2,.9,.2,1), opacity 360ms ease; }
+        .turn-banner.show { transform: translateY(0); opacity:1; }
+        .confetti { position: fixed; width: 10px; height: 16px; z-index: 4100; pointer-events:none; opacity:0.95; transform-origin: center; animation: confetti-fall 1200ms linear forwards; }
+        @keyframes confetti-fall { 0% { transform: translateY(-10vh) rotate(0) scale(1); } 100% { transform: translateY(110vh) rotate(720deg) scale(0.9); opacity: 0.95; } }
+        /* Fullscreen dramatic pop */
+        .fs-pop { position: fixed; left:0; top:0; right:0; bottom:0; display:flex; align-items:center; justify-content:center; z-index:4500; pointer-events:none; }
+        .fs-pop .bg-blur { position:absolute; left:0; top:0; right:0; bottom:0; background: radial-gradient(circle at 50% 30%, rgba(255,255,255,0.06), rgba(255,255,255,0.0)); backdrop-filter: blur(6px) saturate(1.1); opacity:0; transition: opacity 360ms ease; }
+        .fs-pop .flash { position:absolute; left:0; top:0; right:0; bottom:0; background: radial-gradient(circle, rgba(255,255,255,0.95), rgba(255,255,255,0.0)); opacity:0; pointer-events:none; }
+        .fs-pop .pop-box { position:relative; padding: 30px 36px; border-radius: 20px; background: linear-gradient(135deg, rgba(255,255,255,0.95), rgba(255,255,255,0.9)); color:#111; text-align:center; transform: scale(0.86); opacity:0; box-shadow: 0 40px 120px rgba(0,0,0,0.6); transition: transform 420ms cubic-bezier(.2,.9,.2,1), opacity 420ms ease; }
+        .fs-pop .pop-title { font-size: clamp(28px, 6vw, 48px); font-weight: 900; letter-spacing: 0.02em; }
+        .fs-pop.show .bg-blur { opacity:1; }
+        .fs-pop.show .pop-box { transform: scale(1); opacity:1; }
+        .fs-pop .flare { position:absolute; width:260px; height:260px; border-radius:50%; filter: blur(36px); opacity:0.95; pointer-events:none; mix-blend-mode:screen; }
+        @keyframes popPulse { 0%{ transform: scale(0.92); opacity:0 } 40%{ transform: scale(1.04); opacity:1 } 100%{ transform: scale(1); opacity:1 } }
+        .fs-pop .pop-box.pop-animate { animation: popPulse 520ms cubic-bezier(.2,.9,.2,1); }
+        .low-power .confetti, .low-power .fs-pop .flare { display:none !important; }
     </style>
 </head>
 <body>
@@ -400,11 +419,27 @@
         socket.on('joined', d => {
             $('login-modal').style.display='none'; $('main-app').style.display='flex'; $('wealth').innerText=d.wealth;
             if(d.room) roomID = d.room;
-            if(d.relief) alert("Relief funds applied!");
+            if(d.relief) showFloatingError("Relief funds applied!");
+            // big welcome pop in center
+            try { showFullScreenPop({ title: `WELCOME ${myUser || 'PLAYER'}`, subtitle: d.room ? `Room ${d.room}` : 'Joined', color: '#69F0AE', duration: 1600 }); } catch(e){}
             // store username persistently
             if(myUser) localStorage.setItem('nita_username', myUser);
         });
-        socket.on('error', m => { alert(m); $('join-btn').disabled=false; $('join-btn').innerText="START"; });
+        socket.on('error', m => {
+            // General purpose error handler used for join errors and move rejections
+            if(document.getElementById('main-app').style.display === 'flex') {
+                showFloatingError(m);
+                // re-enable interactions if needed
+                myTurn = true; refreshEndTurnButton();
+            } else {
+                alert(m); $('join-btn').disabled=false; $('join-btn').innerText="START";
+            }
+        });
+
+        // Random-match waiting state: show a pop while looking for opponent
+        socket.on('waiting', msg => {
+            try { showFullScreenPop({ title: 'MATCHMAKING', subtitle: msg || 'Looking for opponent...', color: '#54A0FF', duration: 1800, confetti: 18 }); } catch(e){}
+        });
 
         // ROUTING
         socket.on('roomUpdate', d => {
@@ -678,6 +713,12 @@
             setTimeout(()=>b.remove(), 2300);
         });
 
+        // Server-driven turn change: play turn-end animation and a banner
+        socket.on('turnChange', d => {
+            const p = d.prevUsername || 'Player'; const n = d.nextUsername || 'Next';
+            showFullScreenPop({ title: `${p} → ${n}`, subtitle: 'TURN', color: '#FFD740', duration: 1200, confetti: 28 });
+        });
+
         function toggleSelect(cardId, type, index) {
             if(!myTurn) return;
             cardId = String(cardId);
@@ -771,6 +812,16 @@
 
         async function endTurnPlay() {
             if(!myTurn || selectedCards.length===0) return;
+            // client-side validation: ensure none of the selected elements are disabled
+            for(const cid of selectedCards) {
+                const el = document.querySelector(`#uno-hand [data-id="${cid}"]`);
+                if(!el || el.classList.contains('disabled')) {
+                    if(el) { el.classList.add('invalid-move'); setTimeout(()=>el.classList.remove('invalid-move'),300); }
+                    showFloatingError('選択に無効なカードがあります');
+                    return;
+                }
+            }
+
             const colorChoices = selectedCards.map(id => selectedColorChoices[id] || null);
             // Disable further interaction during animation
             myTurn = false; refreshEndTurnButton();
@@ -778,10 +829,103 @@
             // animate selected cards sequentially to pile
             await animatePlaySequence(selectedCards.slice());
 
+            // dramatic local turn-end effects (confetti + burst)
+            playLocalTurnEndEffects();
+
             // after animation, send to server
             socket.emit('unoMultiMove', { room: roomID, cardIds: selectedCards.slice(), colorChoices });
             // clear selection
             selectedCards = []; selectedColorChoices = {}; refreshHandSelection(); refreshEndTurnButton();
+        }
+
+        function playLocalTurnEndEffects() {
+            // spawn confetti and burst at pile
+            spawnConfetti(28);
+            const pile = $('uno-pile').querySelector('.uno-card');
+            if(pile) {
+                const r = pile.getBoundingClientRect();
+                burstAt(r.left + r.width/2, r.top + r.height/2, 16);
+            }
+            // show temporary banner
+            const overlay = document.createElement('div'); overlay.className='turn-overlay';
+            const banner = document.createElement('div'); banner.className='turn-banner'; banner.innerText='TURN END'; overlay.appendChild(banner);
+            document.body.appendChild(overlay);
+            requestAnimationFrame(()=>banner.classList.add('show'));
+            setTimeout(()=>{ banner.classList.remove('show'); overlay.style.opacity='0'; }, 900);
+            setTimeout(()=>overlay.remove(), 1300);
+        }
+
+        function spawnConfetti(count) {
+            const colors = ['#FF6B6B','#4ECDC4','#FFE66D','#54A0FF','#FF9FF3','#69F0AE'];
+            for(let i=0;i<count;i++) {
+                const el = document.createElement('div'); el.className='confetti';
+                el.style.left = (Math.random()*100) + 'vw';
+                el.style.background = colors[Math.floor(Math.random()*colors.length)];
+                el.style.transform = `rotate(${Math.random()*360}deg) translateY(-10vh)`;
+                el.style.animationDelay = (Math.random()*120) + 'ms';
+                document.body.appendChild(el);
+                setTimeout(()=>{ el.remove(); }, 1600 + Math.random()*300);
+            }
+        }
+
+        function burstAt(x,y,count=10) {
+            for(let i=0;i<count;i++){
+                const el = document.createElement('div'); el.className='confetti';
+                const size = 6 + Math.random()*12; el.style.width = size+'px'; el.style.height = (size*1.4)+'px';
+                const colors = ['#fff176','#ff7043','#ff5252','#448aff','#69f0ae']; el.style.background = colors[Math.floor(Math.random()*colors.length)];
+                el.style.left = (x + (Math.random()*120-60)) + 'px'; el.style.top = (y + (Math.random()*120-60)) + 'px';
+                el.style.transform = `translateY(0) rotate(${Math.random()*360}deg)`;
+                el.style.animation = `confetti-fall ${900 + Math.random()*600}ms cubic-bezier(.2,.8,.2,1) forwards`;
+                document.body.appendChild(el);
+                setTimeout(()=>{ if(el) el.remove(); }, 1600 + Math.random()*600);
+            }
+        }
+
+        function showFloatingError(msg) {
+            const el = document.createElement('div'); el.style.position='fixed'; el.style.right='18px'; el.style.top='18px'; el.style.zIndex='5000'; el.style.background='rgba(0,0,0,0.8)'; el.style.color='#fff'; el.style.padding='10px 14px'; el.style.borderRadius='10px'; el.style.boxShadow='0 10px 30px rgba(0,0,0,0.6)'; el.style.fontWeight='700'; el.innerText = msg;
+            document.body.appendChild(el);
+            setTimeout(()=>{ el.style.transition='opacity 400ms ease, transform 400ms ease'; el.style.opacity='0'; el.style.transform='translateY(-8px)'; }, 1600);
+            setTimeout(()=>el.remove(), 2100);
+        }
+
+        function showFullScreenPop(opts) {
+            // opts: { title, subtitle, color, duration(ms), confetti }
+            const title = opts.title || 'POP';
+            const subtitle = opts.subtitle || '';
+            const color = opts.color || '#fff176';
+            const duration = typeof opts.duration === 'number' ? opts.duration : 1400;
+            const confettiCount = typeof opts.confetti === 'number' ? opts.confetti : 40;
+
+            const lowPower = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches || window.innerWidth < 600;
+
+            const el = document.createElement('div'); el.className = 'fs-pop';
+            const bg = document.createElement('div'); bg.className='bg-blur'; el.appendChild(bg);
+            const flash = document.createElement('div'); flash.className='flash'; el.appendChild(flash);
+            const box = document.createElement('div'); box.className='pop-box pop-animate';
+            const flare = document.createElement('div'); flare.className='flare'; flare.style.background = `radial-gradient(circle at 30% 30%, ${color}, rgba(255,255,255,0))`; flare.style.left='50%'; flare.style.top='40%'; box.appendChild(flare);
+            const t = document.createElement('div'); t.className='pop-title'; t.innerText = title; box.appendChild(t);
+            if(subtitle) { const s = document.createElement('div'); s.style.opacity=0.9; s.style.marginTop='8px'; s.style.fontWeight='700'; s.innerText = subtitle; box.appendChild(s); }
+            el.appendChild(box);
+            document.body.appendChild(el);
+
+            // show
+            requestAnimationFrame(()=> el.classList.add('show'));
+
+            // flash pulse
+            flash.style.transition = 'opacity 200ms ease'; flash.style.opacity = '0.9'; setTimeout(()=>{ flash.style.opacity='0'; }, 160);
+
+            // spawn confetti unless lowPower
+            if(!lowPower) spawnConfetti(confettiCount);
+
+            // emit particle burst at pile center
+            const pile = $('uno-pile').querySelector('.uno-card');
+            if(pile) {
+                const r = pile.getBoundingClientRect(); burstAt(r.left + r.width/2, r.top + r.height/2, Math.min(20, Math.floor(confettiCount/2)));
+            }
+
+            // auto-dismiss
+            setTimeout(()=>{ el.classList.remove('show'); el.style.opacity='0'; }, duration);
+            setTimeout(()=>{ if(el && el.parentNode) el.parentNode.removeChild(el); }, duration + 300);
         }
 
         function animatePlaySequence(cardIdList) {
