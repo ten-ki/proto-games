@@ -701,13 +701,20 @@ function runCpuLogic(room, p) {
     idx = p.unoHand.findIndex(c => c.color !== 'black' && canPlayUnoCard(r, c));
     if(idx === -1) idx = p.unoHand.findIndex(c => c.color === 'black' && canPlayUnoCard(r, c));
     
-    if(idx !== -1) setTimeout(() => processUnoMove(room, p.id, idx, fav), 400);
-    else setTimeout(() => processUnoDraw(room, p.id), 400);
+    if(idx !== -1) {
+        // If this play would leave the CPU with 1 card, mark unoCalled so it won't be penalized
+        try { const candidate = p.unoHand[idx]; if(candidate && (p.unoHand.length - 1) === 1) p.unoCalled = true; } catch(e){}
+        setTimeout(() => processUnoMove(room, p.id, idx, fav), 400);
+    } else setTimeout(() => processUnoDraw(room, p.id), 400);
 }
 
 function cpuTryPlayAfterDraw(room, p) {
     const r = rooms[room]; const card = p.unoHand[p.unoHand.length-1];
-    if(canPlayUnoCard(r, card)) processUnoMove(room, p.id, p.unoHand.length-1, 'red');
+    if(canPlayUnoCard(r, card)) {
+        // if playing this card will result in 1 card, auto-call UNO
+        try { if((p.unoHand.length - 1) === 1) p.unoCalled = true; } catch(e){}
+        processUnoMove(room, p.id, p.unoHand.length-1, 'red');
+    }
     else advanceUnoTurn(room);
 }
 

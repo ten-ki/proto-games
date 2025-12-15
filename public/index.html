@@ -750,9 +750,11 @@
         function toggleSelect(cardId, type, index) {
             if(!myTurn) return;
             cardId = String(cardId);
-            // prevent selecting disabled cards
+            // element for this card
             const el = document.querySelector(`#uno-hand [data-id="${cardId}"]`);
-            if(el && el.classList.contains('disabled')) {
+            // If the card is marked disabled by initial render, only block it for the first selection.
+            // For subsequent selections we perform a fresh legality check relative to previous selected card.
+            if(el && el.classList.contains('disabled') && selectedCards.length === 0) {
                 el.classList.add('invalid-move'); setTimeout(()=>el.classList.remove('invalid-move'),300);
                 return;
             }
