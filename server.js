@@ -137,7 +137,7 @@ io.on('connection', (socket) => {
         
         socket.join(room);
         const me = r.players.find(pl=>pl.id===socket.id);
-        socket.emit('joined', { color: me.color, mySeat: r.players.indexOf(me), wealth: userRec.totalWealth, relief });
+        socket.emit('joined', { color: me.color, mySeat: r.players.indexOf(me), wealth: userRec.totalWealth, relief, room });
         io.to(room).emit('roomUpdate', { players: r.players, gameType: r.gameType, maxRounds: r.maxRounds });
         io.emit('rankingUpdate', getRankingData());
     });
@@ -191,7 +191,7 @@ io.on('connection', (socket) => {
                 rooms[roomId].players.push(player);
                 sock.leave(`waiting-${key}`);
                 sock.join(roomId);
-                sock.emit('joined', { color: player.color, mySeat: rooms[roomId].players.indexOf(player), wealth: userRec.totalWealth, relief });
+                sock.emit('joined', { color: player.color, mySeat: rooms[roomId].players.indexOf(player), wealth: userRec.totalWealth, relief, room: roomId });
             });
 
             // notify room
@@ -506,9 +506,27 @@ function processUnoDraw(room, playerId) {
 
     // Normal single draw
     drawCards(r, p, 1);
-    p.hasDrawnThisTurn = true;
-    updateUnoState(room);
-    if(p.isCpu) setTimeout(() => cpuTryPlayAfterDraw(room, p), 1000);
+    // check the drawn card; if it cannot be played, end turn immediately
+    const drawn = p.unoHand[p.unoHand.length - 1];
+    if (!drawn) {
+        // nothing drawn (deck empty) -> just update and advance
+        p.hasDrawnThisTurn = true;
+        updateUnoState(room);
+        advanceUnoTurn(room);
+        return;
+    }
+
+    if (canPlayUnoCard(r, drawn)) {
+        // player may play the drawn card; mark as drawn and update state
+        p.hasDrawnThisTurn = true;
+        updateUnoState(room);
+        if(p.isCpu) setTimeout(() => cpuTryPlayAfterDraw(room, p), 1000);
+    } else {
+        // cannot play, end turn
+        p.hasDrawnThisTurn = true;
+        updateUnoState(room);
+        advanceUnoTurn(room);
+    }
 }
 
 function drawCards(r, p, count) {

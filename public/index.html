@@ -364,6 +364,7 @@
         }
         socket.on('joined', d => {
             $('login-modal').style.display='none'; $('main-app').style.display='flex'; $('wealth').innerText=d.wealth;
+            if(d.room) roomID = d.room;
             if(d.relief) alert("Relief funds applied!");
             // store username persistently
             if(myUser) localStorage.setItem('nita_username', myUser);
