@@ -529,23 +529,19 @@ function processUnoMove(room, playerId, cardIndex, colorChoice) {
     // If the player still has cards of the same `type`, notify them they may continue chaining.
     try {
         const lastType = card.type;
-        const hasSameType = p.unoHand.some(c => String(c.type) === String(lastType));
-        if(hasSameType) {
+        // check if there's any playable card of the same type (respecting drawStack/top)
+        const hasPlayableSameType = p.unoHand.some(c => String(c.type) === String(lastType) && canPlayUnoCard(r, c));
+        if(hasPlayableSameType) {
             socketEmitToPlayer(p.id, 'chainAllowed', { requiredType: lastType });
             updateUnoState(room);
             // CPU should continue acting automatically
             if(p.isCpu) { checkCpuTurn(room); }
-            return; // keep turn with this player (humans must press end-turn explicitly)
+            return; // keep turn with this player
         }
     } catch(e) { console.error('chain check error', e); }
 
-    // No chain possible. For CPU, advance immediately. For human players, do not
-    // auto-advance — they must press the End Turn button to finish their turn.
-    if(p.isCpu) {
-        advanceUnoTurn(room);
-    } else {
-        updateUnoState(room);
-    }
+    // No further playable same-type cards -> advance turn immediately
+    advanceUnoTurn(room);
 }
 
 // Process multiple cards played at once (cardIds array, colorChoices parallel array)

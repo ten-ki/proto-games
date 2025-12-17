@@ -70,6 +70,8 @@
         .reverse-flip { animation: revSpin 900ms ease; }
         @keyframes revSpin { 0%{ transform: rotateY(0); } 50%{ transform: rotateY(180deg) scale(1.03); } 100%{ transform: rotateY(0); } }
         .color-ring.reverse-flash { animation: ringrev 900ms ease; }
+        .color-ring.my-turn { transform: scale(1.02); box-shadow: 0 0 48px rgba(255,255,255,0.06); }
+        #uno-pile .uno-card.my-turn-glow { box-shadow: 0 8px 30px rgba(255,255,255,0.08); transform: scale(1.02); }
         @keyframes ringrev { 0%{ box-shadow: 0 0 6px rgba(100,100,255,0.08);} 50%{ box-shadow: 0 0 48px rgba(100,100,255,0.32); } 100%{ box-shadow: 0 0 6px rgba(100,100,255,0.08);} }
 
         /* Center Pile (Draw & Play) */
@@ -539,10 +541,11 @@
                     return false;
                 }
 
-                const playable = isPlayable(c);
-                // If a chain is active, only allow cards of the required type (or wilds)
+                // Only mark cards playable when it's our turn; otherwise don't highlight
+                const playable = d.isMyTurn && isPlayable(c);
+                // If a chain is active (and it's our turn), only allow cards of the required type
                 let disabledClass = playable ? '' : 'disabled';
-                if(window.chainActive && window.chainRequiredType) {
+                if(d.isMyTurn && window.chainActive && window.chainRequiredType) {
                     if(String(c.type) !== String(window.chainRequiredType)) disabledClass = 'disabled';
                 }
                 const badge = isSelected ? `<div class="select-badge">${selectedCards.indexOf(String(cid))+1}</div>` : '';
@@ -551,6 +554,17 @@
             
             if(d.isMyTurn) $('sys-msg').innerText = "YOUR TURN";
             else $('sys-msg').innerText = "";
+
+            // Pile / ring glow visible only to the active player (persistent while it's their turn)
+            const ring = $('color-ring');
+            const pile = $('uno-pile').querySelector('.uno-card');
+            if(d.isMyTurn) {
+                if(ring) ring.classList.add('my-turn');
+                if(pile) pile.classList.add('my-turn-glow');
+            } else {
+                if(ring) ring.classList.remove('my-turn');
+                if(pile) pile.classList.remove('my-turn-glow');
+            }
 
             // show UNO call button when player has exactly 1 card
             const existingUnoBtn = document.getElementById('uno-call-btn');
